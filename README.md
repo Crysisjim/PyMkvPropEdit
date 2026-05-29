@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![MKVToolNix](https://img.shields.io/badge/requires-MKVToolNix-orange?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Wiki](https://img.shields.io/badge/wiki-available-purple?style=for-the-badge)
+[![Wiki](https://img.shields.io/badge/wiki-available-purple?style=for-the-badge)](https://github.com/Crysisjim/PyMkvPropEdit/wiki)
 
 **Interface graphique batch pour `mkvpropedit` — héritière de JMkvpropedit**
 
