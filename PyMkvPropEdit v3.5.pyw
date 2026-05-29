@@ -3,6 +3,11 @@
 PyMkvPropEdit v3.4 - Batch GUI pour mkvpropedit
 Refactored with improvements and new features.
 
+Changelog v3.5:
+- [NEW] Bilingual EN/FR UI — language toggle in Options tab (restart to apply)
+- [NEW] Windows 11 toast notifications after batch processing, audio sync, frame extraction
+- [NEW] win11toast integration (optional dependency)
+
 Changelog v3.4:
 - [FIX] sanitize_input: ne supprime plus les apostrophes (noms de pistes français corrects)
 - [FIX] calculate_delay: garde contre tableau vide (évite crash scipy)
@@ -89,7 +94,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ============================================================================
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION = "3.4"
+VERSION = "3.5"
 
 SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
 PRESETS_FILE = os.path.join(APP_DIR, "presets.json")
@@ -117,6 +122,110 @@ logging.basicConfig(
 )
 logger = logging.getLogger("PyMkvPropEdit")
 logger.info(f"PyMkvPropEdit v{VERSION} starting...")
+
+# ============================================================================
+# WIN11TOAST — Notifications Windows 11
+# ============================================================================
+
+try:
+    from win11toast import toast as _win11toast
+    HAS_WIN11TOAST = True
+except ImportError:
+    HAS_WIN11TOAST = False
+
+
+def notify_toast(title, body):
+    if not HAS_WIN11TOAST:
+        return
+    try:
+        icon_path = resolve_asset("vivi.ico") if os.path.exists(os.path.join(APP_DIR, "vivi.ico")) else None
+        kwargs = {'app_id': f'PyMkvPropEdit v{VERSION}'}
+        if icon_path:
+            kwargs['icon'] = {'src': icon_path, 'placement': 'appLogoOverride'}
+        _win11toast(title, body, **kwargs)
+    except Exception as e:
+        logger.debug(f"Toast notification failed: {e}")
+
+
+# ============================================================================
+# INTERNATIONALIZATION (EN / FR)
+# ============================================================================
+
+# Early lang load — before UI creation
+_early_settings: dict = {}
+if os.path.exists(SETTINGS_FILE):
+    try:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as _f:
+            _early_settings = json.load(_f)
+    except Exception:
+        pass
+LANG: str = _early_settings.get('language', 'fr')
+
+STRINGS: dict = {
+    'fr': {
+        'tab_input': 'Input', 'tab_output': 'Output',
+        'tab_video': 'Vidéo', 'tab_audio': 'Audio', 'tab_subtitle': 'Sous-titres',
+        'tab_chapters': 'Chapitres', 'tab_cover': 'Image de couverture',
+        'tab_general': 'Général', 'tab_presets': 'Préréglages', 'tab_options': 'Options',
+        'tab_sync': 'Audio Sync 🎵', 'tab_sync_batch': 'Audio Sync Batch 🎵🎵',
+        'tab_frame_check': 'Frame Check 🎥', 'tab_extract': 'Extraire Images 🖼️',
+        'tab_mediainfo': 'MediaInfo 📊', 'tab_about': 'À propos',
+        'btn_add_files': 'Add Files 📄', 'btn_add_folder': 'Add Folder 📁',
+        'btn_remove': 'Remove Selected 🗑️', 'btn_clear': 'Clear ❌',
+        'btn_move_up': 'Move Up ↑', 'btn_move_down': 'Move Down ↓',
+        'btn_process': 'Process Files 🚀', 'btn_cancel': 'Cancel 🛑',
+        'btn_open_mkv': 'Ouvrir MKV', 'btn_analyze': "Lancer l'Analyse Auto 🔍",
+        'btn_apply_delays': 'Appliquer les Delays au fichier 💾',
+        'btn_start_batch': 'Lancer le Batch 🔍',
+        'lbl_theme': 'Thème :', 'lbl_theme_light': 'Clair', 'lbl_theme_dark': 'Sombre',
+        'lbl_save_tracks': 'Sauvegarder les configurations des pistes',
+        'lbl_language_app': 'Langue / Language :',
+        'lbl_restart_required': '(redémarrage requis / restart required)',
+        'lbl_mkvpropedit_path': 'Chemin de mkvpropedit :',
+        'lbl_mkvmerge_path': 'Chemin de mkvmerge :',
+        'lbl_ffmpeg_path': 'Chemin de FFmpeg :', 'lbl_ffprobe_path': 'Chemin de FFprobe :',
+        'notif_batch_done': 'Traitement terminé',
+        'notif_batch_body': '{s} succès — {e} erreur(s)',
+        'notif_sync_done': 'Audio Sync terminé',
+        'notif_sync_body': 'Batch sync terminé.',
+        'notif_extract_done': 'Extraction terminée',
+        'notif_extract_body': 'Images extraites dans le dossier de sortie.',
+    },
+    'en': {
+        'tab_input': 'Input', 'tab_output': 'Output',
+        'tab_video': 'Video', 'tab_audio': 'Audio', 'tab_subtitle': 'Subtitles',
+        'tab_chapters': 'Chapters', 'tab_cover': 'Cover Image',
+        'tab_general': 'General', 'tab_presets': 'Presets', 'tab_options': 'Options',
+        'tab_sync': 'Audio Sync 🎵', 'tab_sync_batch': 'Audio Sync Batch 🎵🎵',
+        'tab_frame_check': 'Frame Check 🎥', 'tab_extract': 'Extract Frames 🖼️',
+        'tab_mediainfo': 'MediaInfo 📊', 'tab_about': 'About',
+        'btn_add_files': 'Add Files 📄', 'btn_add_folder': 'Add Folder 📁',
+        'btn_remove': 'Remove Selected 🗑️', 'btn_clear': 'Clear ❌',
+        'btn_move_up': 'Move Up ↑', 'btn_move_down': 'Move Down ↓',
+        'btn_process': 'Process Files 🚀', 'btn_cancel': 'Cancel 🛑',
+        'btn_open_mkv': 'Open MKV', 'btn_analyze': 'Start Auto Analysis 🔍',
+        'btn_apply_delays': 'Apply Delays to File 💾',
+        'btn_start_batch': 'Start Batch 🔍',
+        'lbl_theme': 'Theme:', 'lbl_theme_light': 'Light', 'lbl_theme_dark': 'Dark',
+        'lbl_save_tracks': 'Save track configurations',
+        'lbl_language_app': 'Langue / Language:',
+        'lbl_restart_required': '(restart required / redémarrage requis)',
+        'lbl_mkvpropedit_path': 'mkvpropedit path:',
+        'lbl_mkvmerge_path': 'mkvmerge path:',
+        'lbl_ffmpeg_path': 'FFmpeg path:', 'lbl_ffprobe_path': 'FFprobe path:',
+        'notif_batch_done': 'Processing complete',
+        'notif_batch_body': '{s} success — {e} error(s)',
+        'notif_sync_done': 'Audio Sync complete',
+        'notif_sync_body': 'Batch sync finished.',
+        'notif_extract_done': 'Extraction complete',
+        'notif_extract_body': 'Frames extracted to output folder.',
+    }
+}
+
+
+def T(key: str) -> str:
+    return STRINGS.get(LANG, STRINGS['fr']).get(key, STRINGS['fr'].get(key, key))
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -847,6 +956,7 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
 
         self._log("Batch terminé.")
         self.after(0, lambda: self.start_btn.config(state='normal'))
+        notify_toast(T('notif_sync_done'), T('notif_sync_body'))
 
     def _apply_delays_batch(self, mkv, tracks_data, mkvmerge):
         base, ext = os.path.splitext(mkv)
@@ -1432,6 +1542,7 @@ class FrameExtractTab(ttk.Frame):
                 root.after(0, lambda: self.lbl_status.config(text="✅ Terminé !"))
                 self.log("Extraction terminée avec succès.")
                 root.after(0, lambda: messagebox.showinfo("Succès", f"Images extraites dans :\n{out_dir}"))
+                notify_toast(T('notif_extract_done'), T('notif_extract_body'))
             elif self.stop_event.is_set():
                 root.after(0, lambda: self.lbl_status.config(text="🛑 Annulé"))
                 self.log("Processus annulé par l'utilisateur.")
@@ -1834,7 +1945,8 @@ class PyMkvPropEdit:
             'audio_sync_duration': self.audio_sync_app.duration_var.get(),
             'audio_sync_start': self.audio_sync_app.start_offset_var.get() if hasattr(self.audio_sync_app, 'start_offset_var') else "300",
             'ffmpeg_path': self.ffmpeg_path_entry.get(),
-            'ffprobe_path': self.ffprobe_path_entry.get()
+            'ffprobe_path': self.ffprobe_path_entry.get(),
+            'language': self.language_var.get() if hasattr(self, 'language_var') else LANG,
         }
         if self.save_tracks_var.get():
             settings['audio_tracks'] = self._save_tracks(self.audio_frames)
@@ -2036,7 +2148,7 @@ class PyMkvPropEdit:
     def create_tabs(self):
         # INPUT TAB
         self.input_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.input_tab, text="Input")
+        self.notebook.add(self.input_tab, text=T('tab_input'))
         listbox_frame = tk.Frame(self.input_tab)
         listbox_frame.pack(fill='both', expand=True, pady=5, padx=5)
         self.file_list = tk.Listbox(listbox_frame, selectmode=tk.MULTIPLE, height=10)
@@ -2047,16 +2159,16 @@ class PyMkvPropEdit:
 
         btn_frame = tk.Frame(self.input_tab)
         btn_frame.pack(side="bottom", anchor='center', pady=6)
-        tk.Button(btn_frame, text="Add Files 📄", command=self.add_files, bg='#ADD8E6', fg='#000000').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Add Folder 📁", command=self.add_folder, bg='#800080', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Remove Selected 🗑️", command=self.remove_selected, bg='#FF4500', fg='white').pack(side=tk.LEFT, padx=2)
-        tk.Button(btn_frame, text="Clear ❌", command=self.clear_files, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Move Up ↑", command=self.move_file_up, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Move Down ↓", command=self.move_file_down, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_add_files'), command=self.add_files, bg='#ADD8E6', fg='#000000').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_add_folder'), command=self.add_folder, bg='#800080', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_remove'), command=self.remove_selected, bg='#FF4500', fg='white').pack(side=tk.LEFT, padx=2)
+        tk.Button(btn_frame, text=T('btn_clear'), command=self.clear_files, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_move_up'), command=self.move_file_up, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_move_down'), command=self.move_file_down, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
 
         # OUTPUT TAB
         self.output_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.output_tab, text="Output")
+        self.notebook.add(self.output_tab, text=T('tab_output'))
         output_controls_frame = tk.Frame(self.output_tab)
         output_controls_frame.pack(fill='x', pady=5)
         ttk.Checkbutton(output_controls_frame, text="Informations détaillées", variable=self.detailed_output_var).pack(side=tk.LEFT, padx=5)
@@ -2097,7 +2209,7 @@ class PyMkvPropEdit:
 
         # CHAPTERS TAB
         self.chapters_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.chapters_tab, text="Chapters")
+        self.notebook.add(self.chapters_tab, text=T('tab_chapters'))
         tk.Label(self.chapters_tab, text="Fichier de chapitres (XML):").pack(pady=10)
         self.chapters_file_entry = tk.Entry(self.chapters_tab)
         self.chapters_file_entry.pack(fill='x', padx=5, pady=5)
@@ -2136,7 +2248,7 @@ class PyMkvPropEdit:
 
         # COVER IMAGE TAB
         self.attachments_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.attachments_tab, text="Image de couverture")
+        self.notebook.add(self.attachments_tab, text=T('tab_cover'))
         tk.Label(self.attachments_tab, text="Ajouter une image de couverture (Jaquette) aux fichiers MKV :", font=("Arial", 10, "bold")).pack(pady=10)
         tk.Label(self.attachments_tab, text="Sélectionner une image :").pack(pady=5)
         self.cover_path_entry = tk.Entry(self.attachments_tab, width=50)
@@ -2158,7 +2270,7 @@ class PyMkvPropEdit:
 
         # GENERAL TAB
         self.general_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.general_tab, text="Général")
+        self.notebook.add(self.general_tab, text=T('tab_general'))
         tk.Label(self.general_tab, text="Titre :").pack(pady=10)
         self.general_title_entry = tk.Entry(self.general_tab, width=50)
         self.general_title_entry.pack(pady=10)
@@ -2184,7 +2296,7 @@ class PyMkvPropEdit:
 
         # PRESETS TAB
         self.presets_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.presets_tab, text="Préréglages")
+        self.notebook.add(self.presets_tab, text=T('tab_presets'))
         tk.Label(self.presets_tab, text="Nom du préréglage :").pack(pady=10)
         self.preset_name_entry = tk.Entry(self.presets_tab)
         self.preset_name_entry.pack(pady=5)
@@ -2199,7 +2311,7 @@ class PyMkvPropEdit:
 
         # OPTIONS TAB
         self.options_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.options_tab, text="Options")
+        self.notebook.add(self.options_tab, text=T('tab_options'))
         tk.Label(self.options_tab, text="Chemin de mkvpropedit :").pack(pady=10)
         self.mkvpropedit_path_entry = tk.Entry(self.options_tab, width=50)
         self.mkvpropedit_path_entry.pack(pady=10)
@@ -2223,14 +2335,22 @@ class PyMkvPropEdit:
         self.ffprobe_path_entry.insert(0, self.settings.get('ffprobe_path', find_ffprobe()))
         tk.Button(self.options_tab, text="Parcourir", command=self.browse_ffprobe, bg='#008000', fg='white').pack(pady=5)
 
-        tk.Label(self.options_tab, text="Thème :").pack(pady=10)
+        tk.Label(self.options_tab, text=T('lbl_theme')).pack(pady=10)
         theme_frame = tk.Frame(self.options_tab)
         theme_frame.pack(pady=10)
         self.theme_var = tk.StringVar(value=self.theme)
-        ttk.Radiobutton(theme_frame, text="Clair", variable=self.theme_var, value="light", command=self.change_theme).pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(theme_frame, text="Sombre", variable=self.theme_var, value="dark", command=self.change_theme).pack(side='left', padx=10)
+        ttk.Radiobutton(theme_frame, text=T('lbl_theme_light'), variable=self.theme_var, value="light", command=self.change_theme).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(theme_frame, text=T('lbl_theme_dark'), variable=self.theme_var, value="dark", command=self.change_theme).pack(side='left', padx=10)
 
-        ttk.Checkbutton(self.options_tab, text="Sauvegarder les configurations des pistes", variable=self.save_tracks_var).pack(pady=10)
+        tk.Label(self.options_tab, text=T('lbl_language_app')).pack(pady=(15, 0))
+        lang_frame = tk.Frame(self.options_tab)
+        lang_frame.pack(pady=5)
+        self.language_var = tk.StringVar(value=LANG)
+        ttk.Radiobutton(lang_frame, text="Français 🇫🇷", variable=self.language_var, value="fr").pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(lang_frame, text="English 🇬🇧", variable=self.language_var, value="en").pack(side=tk.LEFT, padx=10)
+        tk.Label(self.options_tab, text=T('lbl_restart_required'), fg='gray', font=("Arial", 9, "italic")).pack()
+
+        ttk.Checkbutton(self.options_tab, text=T('lbl_save_tracks'), variable=self.save_tracks_var).pack(pady=10)
 
         # [NEW] Export/Import buttons
         io_frame = tk.Frame(self.options_tab)
@@ -2240,32 +2360,32 @@ class PyMkvPropEdit:
 
         # AUDIO SYNC TAB
         self.sync_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.sync_tab, text="Audio Sync 🎵")
+        self.notebook.add(self.sync_tab, text=T('tab_sync'))
         self.audio_sync_app = AudioSyncTab(self.sync_tab, self.settings, self)
 
         # AUDIO SYNC BATCH TAB
         self.batch_sync_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.batch_sync_tab, text="Audio Sync Batch 🎵🎵")
+        self.notebook.add(self.batch_sync_tab, text=T('tab_sync_batch'))
         self.audio_sync_batch_app = AudioSyncBatchTab(self.batch_sync_tab, self.settings, self)
 
         # FRAME CHECK BATCH TAB
         self.frame_check_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.frame_check_tab, text="Frame Check 🎥")
+        self.notebook.add(self.frame_check_tab, text=T('tab_frame_check'))
         self.frame_check_app = FrameCheckBatchTab(self.frame_check_tab, self.settings)
 
         # FRAME EXTRACTION TAB
         self.extract_frames_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.extract_frames_tab, text="Extraire Images 🖼️")
+        self.notebook.add(self.extract_frames_tab, text=T('tab_extract'))
         self.extract_frames_app = FrameExtractTab(self.extract_frames_tab, self.settings)
 
         # [NEW] MEDIA INFO TAB
         self.mediainfo_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.mediainfo_tab, text="MediaInfo 📊")
+        self.notebook.add(self.mediainfo_tab, text=T('tab_mediainfo'))
         self.mediainfo_app = MediaInfoTab(self.mediainfo_tab, self.settings)
 
         # ABOUT TAB
         self.about_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.about_tab, text="À propos")
+        self.notebook.add(self.about_tab, text=T('tab_about'))
         self.about_canvas = tk.Canvas(self.about_tab, highlightthickness=0, borderwidth=0)
         self.about_canvas.pack(fill='both', expand=True)
         try:
@@ -2302,8 +2422,8 @@ class PyMkvPropEdit:
         self.progress_frame.pack(anchor='center', pady=10)
         self.progress = ttk.Progressbar(self.progress_frame, orient="horizontal", length=400, mode="determinate")
         self.progress.pack(side=tk.LEFT, padx=10)
-        tk.Button(self.progress_frame, text="Process Files 🚀", command=self.process_files, bg='#00DC59', fg='#333333').pack(side=tk.LEFT, padx=5)
-        tk.Button(self.progress_frame, text="Cancel 🛑", command=self.cancel_process, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(self.progress_frame, text=T('btn_process'), command=self.process_files, bg='#00DC59', fg='#333333').pack(side=tk.LEFT, padx=5)
+        tk.Button(self.progress_frame, text=T('btn_cancel'), command=self.cancel_process, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
 
     # ---- File management ----
 
@@ -2860,6 +2980,7 @@ class PyMkvPropEdit:
         total_seconds = end_time - start_time
         self.after(0, self._update_status_bar)
         self.after(0, lambda s=list(successes), e=list(errors), t=total_seconds: self.show_summary_window(s, e, t))
+        notify_toast(T('notif_batch_done'), T('notif_batch_body').format(s=len(successes), e=len(errors)))
 
     def _update_execute_ui(self, output, progress_val):
         self.output_text.insert(tk.END, output)
