@@ -93,7 +93,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # CONSTANTS & CONFIG
 # ============================================================================
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+import sys as _sys
+# Handle PyInstaller frozen mode
+if getattr(_sys, 'frozen', False):
+    APP_DIR = os.path.dirname(_sys.executable)
+    _ASSET_DIR = getattr(_sys, '_MEIPASS', APP_DIR)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    _ASSET_DIR = APP_DIR
 VERSION = "3.5"
 
 SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
@@ -163,6 +170,7 @@ LANG: str = _early_settings.get('language', 'fr')
 
 STRINGS: dict = {
     'fr': {
+        # Tabs
         'tab_input': 'Input', 'tab_output': 'Output',
         'tab_video': 'Vidéo', 'tab_audio': 'Audio', 'tab_subtitle': 'Sous-titres',
         'tab_chapters': 'Chapitres', 'tab_cover': 'Image de couverture',
@@ -170,13 +178,67 @@ STRINGS: dict = {
         'tab_sync': 'Audio Sync 🎵', 'tab_sync_batch': 'Audio Sync Batch 🎵🎵',
         'tab_frame_check': 'Frame Check 🎥', 'tab_extract': 'Extraire Images 🖼️',
         'tab_mediainfo': 'MediaInfo 📊', 'tab_about': 'À propos',
-        'btn_add_files': 'Add Files 📄', 'btn_add_folder': 'Add Folder 📁',
-        'btn_remove': 'Remove Selected 🗑️', 'btn_clear': 'Clear ❌',
+        # Main buttons
+        'btn_add_files': 'Ajouter Fichiers 📄', 'btn_add_folder': 'Ajouter Dossier 📁',
+        'btn_remove': 'Supprimer Sélectionnés 🗑️', 'btn_clear': 'Vider ❌',
         'btn_move_up': 'Move Up ↑', 'btn_move_down': 'Move Down ↓',
         'btn_process': 'Process Files 🚀', 'btn_cancel': 'Cancel 🛑',
+        'btn_open': 'Ouvrir', 'btn_browse': 'Parcourir',
         'btn_open_mkv': 'Ouvrir MKV', 'btn_analyze': "Lancer l'Analyse Auto 🔍",
         'btn_apply_delays': 'Appliquer les Delays au fichier 💾',
         'btn_start_batch': 'Lancer le Batch 🔍',
+        'btn_verify': 'Lancer la Vérification 🔍',
+        'btn_extract': "Lancer l'Extraction 🚀", 'btn_stop': 'STOP 🛑',
+        'btn_extract_frame': '📸 Extraire cette frame',
+        'btn_load_edit': 'Charger & Éditer',
+        'btn_add_chapter': 'Ajouter chapitre', 'btn_del_chapter': 'Supprimer chapitre',
+        'btn_browse_image': "Parcourir l'image",
+        'btn_save_preset': 'Sauvegarder', 'btn_load_preset': 'Charger', 'btn_del_preset': 'Supprimer',
+        'btn_export_settings': 'Exporter paramètres 📤', 'btn_import_settings': 'Importer paramètres 📥',
+        'btn_save_log': 'Sauvegarder Log', 'btn_analyze_file': 'Analyser 🔍',
+        # Labels — Audio sync
+        'lbl_select_mkv': ' 1. Sélectionner le fichier MKV (Source complète) ',
+        'lbl_ref_lang': 'Langue de Référence (Jap) :', 'lbl_duration': "Durée d'analyse (sec) :",
+        'lbl_start_offset': 'Début analyse (sec) :',
+        'lbl_start_offset_hint': '(0=début, ajusté auto si trop grand)',
+        'lbl_batch_start': 'Début (sec) :', 'lbl_start_hint_short': '(0=début)',
+        'chk_apply_subs': 'Appliquer automatiquement le délai aux sous-titres de même langue',
+        'chk_apply_subs_short': 'Appliquer aux sous-titres',
+        'chk_apply_props': 'Appliquer les paramètres mkvpropedit définis',
+        'lbl_waiting': 'En attente de fichier...', 'lbl_file_loaded': 'Fichier chargé. Cliquez sur Analyse.',
+        # Tree columns
+        'col_lang': 'Langue', 'col_name': 'Nom de la piste', 'col_status': 'État', 'col_delay': 'Delay Trouvé',
+        # Frame check
+        'lbl_ori_files': 'Fichiers Originaux (Source)', 'lbl_enc_files': 'Fichiers Encodés (A vérifier)',
+        'btn_add_ori': 'Ajouter Fichiers Ori 📄', 'btn_add_ori_folder': 'Ajouter Dossier Ori 📁',
+        'btn_clear_ori': 'Vider Ori ❌', 'btn_add_enc': 'Ajouter Fichiers Enc 📄',
+        'btn_add_enc_folder': 'Ajouter Dossier Enc 📁', 'btn_clear_enc': 'Vider Enc ❌',
+        'lbl_tolerance': 'Tolérance durée (sec) :',
+        # Frame extract
+        'lbl_video_source': ' 1. Source Vidéo ', 'lbl_params_dest': ' 2. Paramètres & Destination ',
+        'lbl_format': 'Format :', 'chk_auto_folder': 'Créer un sous-dossier au nom de la vidéo',
+        'lbl_manual_dir': 'Ou dossier manuel :', 'lbl_quality_frame': ' Qualité ',
+        'lbl_jpg_quality': 'JPG (q:v 1=best 31=worst) :', 'lbl_png_compression': 'PNG (0=fast 9=max compress) :',
+        'lbl_frequency': 'Fréquence :', 'rb_interval': 'Intervalle (sec)', 'rb_all_frames': 'Toutes les frames',
+        'lbl_every': '-> Une image toutes les :', 'lbl_seconds': 'secondes',
+        'lbl_single_frame_section': ' Extraire une frame précise ',
+        'lbl_timecode': 'Timecode (HH:MM:SS.ms) :', 'lbl_frame_num': 'ou Frame N° :',
+        'lbl_ready': 'Prêt',
+        # Chapters tab
+        'lbl_chapters_file': 'Fichier de chapitres (XML):', 'lbl_suffix': 'Suffixe:',
+        'chk_remove_chapters': 'Supprimer les chapitres',
+        'chk_apply_chapter_names': 'Appliquer les noms de chapitres à tous les fichiers',
+        # Cover tab
+        'lbl_cover_intro': 'Ajouter une image de couverture (Jaquette) aux fichiers MKV :',
+        'lbl_select_image': 'Sélectionner une image :', 'lbl_no_preview': 'Aucun aperçu disponible',
+        'lbl_attachment_name': 'Nom de la pièce jointe :', 'lbl_cover_format': 'Format :',
+        # General tab
+        'lbl_title_field': 'Titre :', 'chk_custom_numbering': 'Numérotation personnalisée',
+        'lbl_start_num': 'Numéro de départ :', 'lbl_padding': 'Remplissage :',
+        'chk_delete_tags': 'Supprimer tous les tags', 'lbl_extra_params': 'Paramètres supplémentaires :',
+        # Presets tab
+        'lbl_preset_name': 'Nom du préréglage :', 'lbl_select_preset': 'Sélectionner un préréglage :',
+        # Options
         'lbl_theme': 'Thème :', 'lbl_theme_light': 'Clair', 'lbl_theme_dark': 'Sombre',
         'lbl_save_tracks': 'Sauvegarder les configurations des pistes',
         'lbl_language_app': 'Langue / Language :',
@@ -184,14 +246,20 @@ STRINGS: dict = {
         'lbl_mkvpropedit_path': 'Chemin de mkvpropedit :',
         'lbl_mkvmerge_path': 'Chemin de mkvmerge :',
         'lbl_ffmpeg_path': 'Chemin de FFmpeg :', 'lbl_ffprobe_path': 'Chemin de FFprobe :',
-        'notif_batch_done': 'Traitement terminé',
-        'notif_batch_body': '{s} succès — {e} erreur(s)',
-        'notif_sync_done': 'Audio Sync terminé',
-        'notif_sync_body': 'Batch sync terminé.',
-        'notif_extract_done': 'Extraction terminée',
-        'notif_extract_body': 'Images extraites dans le dossier de sortie.',
+        # Output tab
+        'chk_detailed': 'Informations détaillées',
+        # Status bar
+        'status_ready': f'PyMkvPropEdit v{VERSION} — Prêt',
+        'status_files': '{n} fichier(s) chargé(s)', 'status_processing': 'Traitement de {n} fichier(s) en cours...',
+        # Notifications
+        'notif_batch_done': 'Traitement terminé', 'notif_batch_body': '{s} succès — {e} erreur(s)',
+        'notif_sync_done': 'Audio Sync terminé', 'notif_sync_body': 'Batch sync terminé.',
+        'notif_extract_done': 'Extraction terminée', 'notif_extract_body': 'Images extraites dans le dossier de sortie.',
+        # numpy missing
+        'warn_no_scipy': '⚠️ Modules numpy/scipy manquants.', 'warn_install_scipy': 'Installez-les via : pip install numpy scipy',
     },
     'en': {
+        # Tabs
         'tab_input': 'Input', 'tab_output': 'Output',
         'tab_video': 'Video', 'tab_audio': 'Audio', 'tab_subtitle': 'Subtitles',
         'tab_chapters': 'Chapters', 'tab_cover': 'Cover Image',
@@ -199,13 +267,85 @@ STRINGS: dict = {
         'tab_sync': 'Audio Sync 🎵', 'tab_sync_batch': 'Audio Sync Batch 🎵🎵',
         'tab_frame_check': 'Frame Check 🎥', 'tab_extract': 'Extract Frames 🖼️',
         'tab_mediainfo': 'MediaInfo 📊', 'tab_about': 'About',
+        # Main buttons
         'btn_add_files': 'Add Files 📄', 'btn_add_folder': 'Add Folder 📁',
         'btn_remove': 'Remove Selected 🗑️', 'btn_clear': 'Clear ❌',
         'btn_move_up': 'Move Up ↑', 'btn_move_down': 'Move Down ↓',
         'btn_process': 'Process Files 🚀', 'btn_cancel': 'Cancel 🛑',
+        'btn_open': 'Open', 'btn_browse': 'Browse',
         'btn_open_mkv': 'Open MKV', 'btn_analyze': 'Start Auto Analysis 🔍',
         'btn_apply_delays': 'Apply Delays to File 💾',
         'btn_start_batch': 'Start Batch 🔍',
+        'btn_verify': 'Start Verification 🔍',
+        'btn_extract': 'Start Extraction 🚀', 'btn_stop': 'STOP 🛑',
+        'btn_extract_frame': '📸 Extract this frame',
+        'btn_load_edit': 'Load & Edit',
+        'btn_add_chapter': 'Add chapter', 'btn_del_chapter': 'Remove chapter',
+        'btn_browse_image': 'Browse image',
+        'btn_save_preset': 'Save', 'btn_load_preset': 'Load', 'btn_del_preset': 'Delete',
+        'btn_export_settings': 'Export settings 📤', 'btn_import_settings': 'Import settings 📥',
+        'btn_save_log': 'Save Log', 'btn_analyze_file': 'Analyze 🔍',
+        # Labels — Audio sync
+        'lbl_select_mkv': ' 1. Select MKV File (Full source) ',
+        'lbl_ref_lang': 'Reference Language (Jpn):', 'lbl_duration': 'Analysis Duration (sec):',
+        'lbl_start_offset': 'Analysis Start (sec):',
+        'lbl_start_offset_hint': '(0=start, auto-adjusted if too large)',
+        'lbl_batch_start': 'Start (sec):', 'lbl_start_hint_short': '(0=start)',
+        'chk_apply_subs': 'Auto-apply delay to subtitles of same language',
+        'chk_apply_subs_short': 'Apply to subtitles',
+        'chk_apply_props': 'Apply defined mkvpropedit settings',
+        'lbl_waiting': 'Waiting for file...', 'lbl_file_loaded': 'File loaded. Click Analyze.',
+        # Tree columns
+        'col_lang': 'Language', 'col_name': 'Track Name', 'col_status': 'Status', 'col_delay': 'Delay Found',
+        # Frame check
+        'lbl_ori_files': 'Original Files (Source)', 'lbl_enc_files': 'Encoded Files (To verify)',
+        'btn_add_ori': 'Add Original Files 📄', 'btn_add_ori_folder': 'Add Original Folder 📁',
+        'btn_clear_ori': 'Clear Originals ❌', 'btn_add_enc': 'Add Encoded Files 📄',
+        'btn_add_enc_folder': 'Add Encoded Folder 📁', 'btn_clear_enc': 'Clear Encoded ❌',
+        'lbl_tolerance': 'Duration tolerance (sec):',
+        # Frame extract
+        'lbl_video_source': ' 1. Video Source ', 'lbl_params_dest': ' 2. Parameters & Destination ',
+        'lbl_format': 'Format:', 'chk_auto_folder': 'Create a subfolder named after the video',
+        'lbl_manual_dir': 'Or manual folder:', 'lbl_quality_frame': ' Quality ',
+        'lbl_jpg_quality': 'JPG (q:v 1=best 31=worst):', 'lbl_png_compression': 'PNG (0=fast 9=max compress):',
+        'lbl_frequency': 'Frequency:', 'rb_interval': 'Interval (sec)', 'rb_all_frames': 'All frames',
+        'lbl_every': '-> One image every:', 'lbl_seconds': 'seconds',
+        'lbl_single_frame_section': ' Extract a specific frame ',
+        'lbl_timecode': 'Timecode (HH:MM:SS.ms):', 'lbl_frame_num': 'or Frame N°:',
+        'lbl_ready': 'Ready',
+        # Chapters tab
+        'lbl_chapters_file': 'Chapter file (XML):', 'lbl_suffix': 'Suffix:',
+        'chk_remove_chapters': 'Remove chapters',
+        'chk_apply_chapter_names': 'Apply chapter names to all files',
+        # Cover tab
+        'lbl_cover_intro': 'Add a cover image (jacket) to MKV files:',
+        'lbl_select_image': 'Select an image:', 'lbl_no_preview': 'No preview available',
+        'lbl_attachment_name': 'Attachment name:', 'lbl_cover_format': 'Format:',
+        # General tab
+        'lbl_title_field': 'Title:', 'chk_custom_numbering': 'Custom numbering',
+        'lbl_start_num': 'Start number:', 'lbl_padding': 'Padding:',
+        'chk_delete_tags': 'Delete all tags', 'lbl_extra_params': 'Extra parameters:',
+        # Presets tab
+        'lbl_preset_name': 'Preset name:', 'lbl_select_preset': 'Select a preset:',
+        # Options
+        'lbl_theme': 'Theme:', 'lbl_theme_light': 'Light', 'lbl_theme_dark': 'Dark',
+        'lbl_save_tracks': 'Save track configurations',
+        'lbl_language_app': 'Langue / Language:',
+        'lbl_restart_required': '(restart required / redémarrage requis)',
+        'lbl_mkvpropedit_path': 'mkvpropedit path:',
+        'lbl_mkvmerge_path': 'mkvmerge path:',
+        'lbl_ffmpeg_path': 'FFmpeg path:', 'lbl_ffprobe_path': 'FFprobe path:',
+        # Output tab
+        'chk_detailed': 'Detailed information',
+        # Status bar
+        'status_ready': f'PyMkvPropEdit v{VERSION} — Ready',
+        'status_files': '{n} file(s) loaded', 'status_processing': 'Processing {n} file(s)...',
+        # Notifications
+        'notif_batch_done': 'Processing complete', 'notif_batch_body': '{s} success — {e} error(s)',
+        'notif_sync_done': 'Audio Sync complete', 'notif_sync_body': 'Batch sync finished.',
+        'notif_extract_done': 'Extraction complete', 'notif_extract_body': 'Frames extracted to output folder.',
+        # numpy missing
+        'warn_no_scipy': '⚠️ numpy/scipy modules missing.', 'warn_install_scipy': 'Install via: pip install numpy scipy',
         'lbl_theme': 'Theme:', 'lbl_theme_light': 'Light', 'lbl_theme_dark': 'Dark',
         'lbl_save_tracks': 'Save track configurations',
         'lbl_language_app': 'Langue / Language:',
@@ -298,7 +438,10 @@ def sanitize_input(text):
 
 
 def resolve_asset(filename):
-    """Resolve path to an asset file relative to the app directory."""
+    """Resolve path to an asset file — handles PyInstaller frozen builds."""
+    p = os.path.join(_ASSET_DIR, filename)
+    if os.path.exists(p):
+        return p
     return os.path.join(APP_DIR, filename)
 
 
@@ -545,31 +688,31 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
 
         if not HAS_SCIPY:
-            tk.Label(main_frame, text="⚠️ Modules numpy/scipy manquants.", fg="red", font=("Arial", 12, "bold")).pack(pady=20)
-            tk.Label(main_frame, text="Installez-les via : pip install numpy scipy", fg="red").pack()
+            tk.Label(main_frame, text=T('warn_no_scipy'), fg="red", font=("Arial", 12, "bold")).pack(pady=20)
+            tk.Label(main_frame, text=T('warn_install_scipy'), fg="red").pack()
             return
 
         # ZONE 1: INPUT
-        input_frame = tk.LabelFrame(main_frame, text=" 1. Sélectionner le fichier MKV (Source complète) ", font=("Arial", 9, "bold"))
+        input_frame = tk.LabelFrame(main_frame, text=T('lbl_select_mkv'), font=("Arial", 9, "bold"))
         input_frame.pack(fill='x', pady=5, ipady=5)
 
         self.mkv_entry = tk.Entry(input_frame)
         self.mkv_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
-        tk.Button(input_frame, text="Ouvrir MKV", command=self.load_mkv_info, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
+        tk.Button(input_frame, text=T('btn_open_mkv'), command=self.load_mkv_info, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
 
         # ZONE 2: SETTINGS
         top_panel = tk.Frame(main_frame)
         top_panel.pack(fill='x', pady=5)
-        tk.Label(top_panel, text="Langue de Référence (Jap) :").pack(side=tk.LEFT)
+        tk.Label(top_panel, text=T('lbl_ref_lang')).pack(side=tk.LEFT)
         self.ref_lang_var = tk.StringVar(value="jpn")
         tk.Entry(top_panel, textvariable=self.ref_lang_var, width=5).pack(side=tk.LEFT, padx=5)
-        tk.Label(top_panel, text="Durée d'analyse (sec) :").pack(side=tk.LEFT, padx=(10, 0))
+        tk.Label(top_panel, text=T('lbl_duration')).pack(side=tk.LEFT, padx=(10, 0))
         self.duration_var = tk.StringVar(value=settings.get('audio_sync_duration', "120"))
         tk.Entry(top_panel, textvariable=self.duration_var, width=5).pack(side=tk.LEFT, padx=5)
-        tk.Label(top_panel, text="Début analyse (sec) :").pack(side=tk.LEFT, padx=(10, 0))
+        tk.Label(top_panel, text=T('lbl_start_offset')).pack(side=tk.LEFT, padx=(10, 0))
         self.start_offset_var = tk.StringVar(value=settings.get('audio_sync_start', "300"))
         tk.Entry(top_panel, textvariable=self.start_offset_var, width=5).pack(side=tk.LEFT, padx=5)
-        tk.Label(top_panel, text="(0=début, ajusté auto si trop grand)").pack(side=tk.LEFT, padx=2)
+        tk.Label(top_panel, text=T('lbl_start_offset_hint')).pack(side=tk.LEFT, padx=2)
 
         # ZONE 3: TRACKS TABLE
         tree_frame = tk.Frame(main_frame)
@@ -578,10 +721,10 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=8)
         self.tree.heading("ID", text="ID"); self.tree.column("ID", width=40, anchor='center')
         self.tree.heading("Type", text="Type"); self.tree.column("Type", width=60, anchor='center')
-        self.tree.heading("Lang", text="Langue"); self.tree.column("Lang", width=60, anchor='center')
-        self.tree.heading("Nom", text="Nom de la piste"); self.tree.column("Nom", width=250)
-        self.tree.heading("Status", text="État"); self.tree.column("Status", width=120, anchor='center')
-        self.tree.heading("Delay Calc.", text="Delay Trouvé"); self.tree.column("Delay Calc.", width=100, anchor='center')
+        self.tree.heading("Lang", text=T('col_lang')); self.tree.column("Lang", width=60, anchor='center')
+        self.tree.heading("Nom", text=T('col_name')); self.tree.column("Nom", width=250)
+        self.tree.heading("Status", text=T('col_status')); self.tree.column("Status", width=120, anchor='center')
+        self.tree.heading("Delay Calc.", text=T('col_delay')); self.tree.column("Delay Calc.", width=100, anchor='center')
         self.tree.pack(side=tk.LEFT, fill='both', expand=True)
         sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         sb.pack(side=tk.RIGHT, fill='y')
@@ -591,17 +734,17 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         action_frame = tk.Frame(main_frame)
         action_frame.pack(fill='x', pady=10)
         self.apply_subs_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(action_frame, text="Appliquer automatiquement le délai aux sous-titres de même langue", variable=self.apply_subs_var).pack(side=tk.TOP, pady=5)
+        ttk.Checkbutton(action_frame, text=T('chk_apply_subs'), variable=self.apply_subs_var).pack(side=tk.TOP, pady=5)
         self.apply_props_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(action_frame, text="Appliquer les paramètres mkvpropedit définis", variable=self.apply_props_var).pack(side=tk.TOP, pady=5)
+        ttk.Checkbutton(action_frame, text=T('chk_apply_props'), variable=self.apply_props_var).pack(side=tk.TOP, pady=5)
 
         btn_box = tk.Frame(action_frame)
         btn_box.pack(fill='x', pady=5)
-        self.analyze_btn = tk.Button(btn_box, text="Lancer l'Analyse Auto 🔍", command=self.start_analysis, bg='#0066ff', fg='white', font=("Arial", 11, "bold"), state='disabled')
+        self.analyze_btn = tk.Button(btn_box, text=T('btn_analyze'), command=self.start_analysis, bg='#0066ff', fg='white', font=("Arial", 11, "bold"), state='disabled')
         self.analyze_btn.pack(side=tk.LEFT, padx=10, fill='x', expand=True)
-        self.apply_btn = tk.Button(btn_box, text="Appliquer les Delays au fichier 💾", command=self.apply_delays, bg='#008000', fg='white', font=("Arial", 11, "bold"), state='disabled')
+        self.apply_btn = tk.Button(btn_box, text=T('btn_apply_delays'), command=self.apply_delays, bg='#008000', fg='white', font=("Arial", 11, "bold"), state='disabled')
         self.apply_btn.pack(side=tk.LEFT, padx=10, fill='x', expand=True)
-        self.log_lbl = tk.Label(main_frame, text="En attente de fichier...", fg="gray", font=("Arial", 10, "italic"))
+        self.log_lbl = tk.Label(main_frame, text=T('lbl_waiting'), fg="gray", font=("Arial", 10, "italic"))
         self.log_lbl.pack(side=tk.BOTTOM, pady=5)
 
     def load_mkv_info(self):
@@ -765,8 +908,8 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
 
         if not HAS_SCIPY:
-            tk.Label(main_frame, text="⚠️ Modules numpy/scipy manquants.", fg="red", font=("Arial", 12, "bold")).pack(pady=20)
-            tk.Label(main_frame, text="Installez-les via : pip install numpy scipy", fg="red").pack()
+            tk.Label(main_frame, text=T('warn_no_scipy'), fg="red", font=("Arial", 12, "bold")).pack(pady=20)
+            tk.Label(main_frame, text=T('warn_install_scipy'), fg="red").pack()
             return
 
         # ZONE 1: File list
@@ -793,38 +936,38 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
 
         btn_frame = tk.Frame(main_frame)
         btn_frame.pack(fill='x', pady=5)
-        tk.Button(btn_frame, text="Ajouter Fichiers 📄", command=self.add_files, bg='#ADD8E6', fg='#000000').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Ajouter Dossier 📁", command=self.add_folder, bg='#800080', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Supprimer Sélectionnés 🗑️", command=self.remove_selected, bg='#FF4500', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Vider ❌", command=self.clear_files, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_add_files'), command=self.add_files, bg='#ADD8E6', fg='#000000').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_add_folder'), command=self.add_folder, bg='#800080', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_remove'), command=self.remove_selected, bg='#FF4500', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=T('btn_clear'), command=self.clear_files, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
 
         # ZONE 2: Settings
         settings_frame = tk.Frame(main_frame)
         settings_frame.pack(fill='x', pady=5)
 
-        tk.Label(settings_frame, text="Langue de Référence (Jap) :").pack(side=tk.LEFT)
+        tk.Label(settings_frame, text=T('lbl_ref_lang')).pack(side=tk.LEFT)
         self.ref_lang_var = tk.StringVar(value="jpn")
         tk.Entry(settings_frame, textvariable=self.ref_lang_var, width=5).pack(side=tk.LEFT, padx=5)
 
-        tk.Label(settings_frame, text="Durée d'analyse (sec) :").pack(side=tk.LEFT, padx=(10, 0))
+        tk.Label(settings_frame, text=T('lbl_duration')).pack(side=tk.LEFT, padx=(10, 0))
         self.duration_var = tk.StringVar(value=settings.get('audio_sync_duration', "120"))
         tk.Entry(settings_frame, textvariable=self.duration_var, width=5).pack(side=tk.LEFT, padx=5)
-        tk.Label(settings_frame, text="Début (sec) :").pack(side=tk.LEFT, padx=(10, 0))
+        tk.Label(settings_frame, text=T('lbl_batch_start')).pack(side=tk.LEFT, padx=(10, 0))
         self.start_offset_var = tk.StringVar(value=settings.get('audio_sync_start', "300"))
         tk.Entry(settings_frame, textvariable=self.start_offset_var, width=5).pack(side=tk.LEFT, padx=5)
-        tk.Label(settings_frame, text="(0=début)").pack(side=tk.LEFT, padx=2)
+        tk.Label(settings_frame, text=T('lbl_start_hint_short')).pack(side=tk.LEFT, padx=2)
 
         self.apply_subs_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(settings_frame, text="Appliquer aux sous-titres", variable=self.apply_subs_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(settings_frame, text=T('chk_apply_subs_short'), variable=self.apply_subs_var).pack(side=tk.LEFT, padx=10)
 
         self.apply_props_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(settings_frame, text="Appliquer les paramètres mkvpropedit définis", variable=self.apply_props_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(settings_frame, text=T('chk_apply_props'), variable=self.apply_props_var).pack(side=tk.LEFT, padx=10)
 
         # ZONE 3: Actions
         action_frame = tk.Frame(main_frame)
         action_frame.pack(fill='x', pady=10)
 
-        self.start_btn = tk.Button(action_frame, text="Lancer le Batch 🔍", command=self.start_batch, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
+        self.start_btn = tk.Button(action_frame, text=T('btn_start_batch'), command=self.start_batch, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
         self.start_btn.pack(side=tk.LEFT, padx=10, fill='x', expand=True)
 
         self.progress = ttk.Progressbar(main_frame, orient='horizontal', length=400, mode='determinate')
@@ -1001,7 +1144,7 @@ class FrameCheckBatchTab(ttk.Frame):
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
 
         # Original files
-        ori_frame = tk.LabelFrame(main_frame, text="Fichiers Originaux (Source)")
+        ori_frame = tk.LabelFrame(main_frame, text=T('lbl_ori_files'))
         ori_frame.pack(fill='x', pady=5)
 
         self.ori_list = tk.Listbox(ori_frame, selectmode=tk.MULTIPLE, height=5)
@@ -1023,12 +1166,12 @@ class FrameCheckBatchTab(ttk.Frame):
 
         btn_ori_frame = tk.Frame(ori_frame)
         btn_ori_frame.pack(side="bottom", fill='x')
-        tk.Button(btn_ori_frame, text="Ajouter Fichiers Ori 📄", command=self.add_ori_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_ori_frame, text="Ajouter Dossier Ori 📁", command=self.add_ori_folder).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_ori_frame, text="Vider Ori ❌", command=self.clear_ori).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_ori_frame, text=T('btn_add_ori'), command=self.add_ori_files).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_ori_frame, text=T('btn_add_ori_folder'), command=self.add_ori_folder).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_ori_frame, text=T('btn_clear_ori'), command=self.clear_ori).pack(side=tk.LEFT, padx=5)
 
         # Encoded files
-        enc_frame = tk.LabelFrame(main_frame, text="Fichiers Encodés (A vérifier)")
+        enc_frame = tk.LabelFrame(main_frame, text=T('lbl_enc_files'))
         enc_frame.pack(fill='x', pady=5)
 
         self.enc_list = tk.Listbox(enc_frame, selectmode=tk.MULTIPLE, height=5)
@@ -1050,14 +1193,14 @@ class FrameCheckBatchTab(ttk.Frame):
 
         btn_enc_frame = tk.Frame(enc_frame)
         btn_enc_frame.pack(side="bottom", fill='x')
-        tk.Button(btn_enc_frame, text="Ajouter Fichiers Enc 📄", command=self.add_enc_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_enc_frame, text="Ajouter Dossier Enc 📁", command=self.add_enc_folder).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_enc_frame, text="Vider Enc ❌", command=self.clear_enc).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_enc_frame, text=T('btn_add_enc'), command=self.add_enc_files).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_enc_frame, text=T('btn_add_enc_folder'), command=self.add_enc_folder).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_enc_frame, text=T('btn_clear_enc'), command=self.clear_enc).pack(side=tk.LEFT, padx=5)
 
         # Tolerance setting
         tol_frame = tk.Frame(main_frame)
         tol_frame.pack(fill='x', pady=5)
-        tk.Label(tol_frame, text="Tolérance durée (sec) :").pack(side=tk.LEFT)
+        tk.Label(tol_frame, text=T('lbl_tolerance')).pack(side=tk.LEFT)
         self.tolerance_var = tk.StringVar(value="1.0")
         tk.Entry(tol_frame, textvariable=self.tolerance_var, width=5).pack(side=tk.LEFT, padx=5)
         ToolTip(tk.Label(tol_frame, text="ℹ️"), "Différence de durée maximale tolérée entre original et encodé")
@@ -1065,7 +1208,7 @@ class FrameCheckBatchTab(ttk.Frame):
         # Actions
         action_frame = tk.Frame(main_frame)
         action_frame.pack(fill='x', pady=10)
-        self.start_btn = tk.Button(action_frame, text="Lancer la Vérification 🔍", command=self.start_check, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
+        self.start_btn = tk.Button(action_frame, text=T('btn_verify'), command=self.start_check, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
         self.start_btn.pack(side=tk.LEFT, padx=10, fill='x', expand=True)
 
         self.progress = ttk.Progressbar(main_frame, orient='horizontal', length=400, mode='determinate')
@@ -1252,12 +1395,12 @@ class FrameExtractTab(ttk.Frame):
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
 
         # ZONE 1: FILE SELECT
-        input_frame = tk.LabelFrame(main_frame, text=" 1. Source Vidéo ", font=("Arial", 9, "bold"))
+        input_frame = tk.LabelFrame(main_frame, text=T('lbl_video_source'), font=("Arial", 9, "bold"))
         input_frame.pack(fill='x', pady=5, ipady=5)
 
         self.file_entry = tk.Entry(input_frame)
         self.file_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
-        tk.Button(input_frame, text="Ouvrir", command=self.browse_file, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
+        tk.Button(input_frame, text=T('btn_open'), command=self.browse_file, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
 
         if TkinterDnD:
             try:
@@ -1271,21 +1414,21 @@ class FrameExtractTab(ttk.Frame):
                 logger.warning("tkdnd not available for self.file_entry")
 
         # ZONE 2: EXTRACTION SETTINGS
-        opts_frame = tk.LabelFrame(main_frame, text=" 2. Paramètres & Destination ", font=("Arial", 9, "bold"))
+        opts_frame = tk.LabelFrame(main_frame, text=T('lbl_params_dest'), font=("Arial", 9, "bold"))
         opts_frame.pack(fill='x', pady=5, ipady=5)
 
         line1 = tk.Frame(opts_frame)
         line1.pack(fill='x', padx=5, pady=5)
-        tk.Label(line1, text="Format :").pack(side=tk.LEFT)
+        tk.Label(line1, text=T('lbl_format')).pack(side=tk.LEFT)
         self.format_var = tk.StringVar(value="jpg")
         ttk.Combobox(line1, textvariable=self.format_var, values=["jpg", "png", "bmp"], width=6, state="readonly").pack(side=tk.LEFT, padx=5)
 
         self.auto_folder_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(line1, text="Créer un sous-dossier au nom de la vidéo", variable=self.auto_folder_var, command=self.toggle_path_entry).pack(side=tk.LEFT, padx=15)
+        ttk.Checkbutton(line1, text=T('chk_auto_folder'), variable=self.auto_folder_var, command=self.toggle_path_entry).pack(side=tk.LEFT, padx=15)
 
         self.path_frame = tk.Frame(opts_frame)
         self.path_frame.pack(fill='x', padx=5, pady=0)
-        tk.Label(self.path_frame, text="Ou dossier manuel :").pack(side=tk.LEFT)
+        tk.Label(self.path_frame, text=T('lbl_manual_dir')).pack(side=tk.LEFT)
         self.out_dir_var = tk.StringVar()
         self.out_dir_entry = tk.Entry(self.path_frame, textvariable=self.out_dir_var)
         self.out_dir_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
@@ -1294,16 +1437,16 @@ class FrameExtractTab(ttk.Frame):
         self.toggle_path_entry()
 
         # Ligne 2 : Qualité
-        line_quality = tk.LabelFrame(opts_frame, text=" Qualité ", font=("Arial", 8))
+        line_quality = tk.LabelFrame(opts_frame, text=T('lbl_quality_frame'), font=("Arial", 8))
         line_quality.pack(fill='x', padx=5, pady=5)
 
-        tk.Label(line_quality, text="JPG (q:v 1=best 31=worst) :").pack(side=tk.LEFT, padx=5)
+        tk.Label(line_quality, text=T('lbl_jpg_quality')).pack(side=tk.LEFT, padx=5)
         self.jpg_quality_var = tk.IntVar(value=2)
         self.jpg_quality_scale = tk.Scale(line_quality, from_=1, to=31, orient=tk.HORIZONTAL,
                                            variable=self.jpg_quality_var, length=120, showvalue=True)
         self.jpg_quality_scale.pack(side=tk.LEFT, padx=5)
 
-        tk.Label(line_quality, text="PNG (0=fast 9=max compress) :").pack(side=tk.LEFT, padx=(20, 5))
+        tk.Label(line_quality, text=T('lbl_png_compression')).pack(side=tk.LEFT, padx=(20, 5))
         self.png_compression_var = tk.IntVar(value=5)
         self.png_compression_scale = tk.Scale(line_quality, from_=0, to=9, orient=tk.HORIZONTAL,
                                                variable=self.png_compression_var, length=100, showvalue=True)
@@ -1312,33 +1455,33 @@ class FrameExtractTab(ttk.Frame):
         # Ligne 3 : Fréquence / Mode batch
         line2 = tk.Frame(opts_frame)
         line2.pack(fill='x', padx=5, pady=5)
-        tk.Label(line2, text="Fréquence :").pack(side=tk.LEFT)
+        tk.Label(line2, text=T('lbl_frequency')).pack(side=tk.LEFT)
         self.mode_var = tk.StringVar(value="interval")
-        tk.Radiobutton(line2, text="Intervalle (sec)", variable=self.mode_var, value="interval", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
-        tk.Radiobutton(line2, text="Toutes les frames", variable=self.mode_var, value="all", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
-        self.interval_lbl = tk.Label(line2, text="-> Une image toutes les :")
+        tk.Radiobutton(line2, text=T('rb_interval'), variable=self.mode_var, value="interval", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
+        tk.Radiobutton(line2, text=T('rb_all_frames'), variable=self.mode_var, value="all", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
+        self.interval_lbl = tk.Label(line2, text=T('lbl_every'))
         self.interval_lbl.pack(side=tk.LEFT, padx=(5, 0))
         self.interval_entry = tk.Entry(line2, width=5)
         self.interval_entry.insert(0, "1")
         self.interval_entry.pack(side=tk.LEFT, padx=2)
-        tk.Label(line2, text="secondes").pack(side=tk.LEFT)
+        tk.Label(line2, text=T('lbl_seconds')).pack(side=tk.LEFT)
 
         # Ligne 4 : Extraction frame précise
-        single_frame = tk.LabelFrame(opts_frame, text=" Extraire une frame précise ", font=("Arial", 8))
+        single_frame = tk.LabelFrame(opts_frame, text=T('lbl_single_frame_section'), font=("Arial", 8))
         single_frame.pack(fill='x', padx=5, pady=5)
 
-        tk.Label(single_frame, text="Timecode (HH:MM:SS.ms) :").pack(side=tk.LEFT, padx=5)
+        tk.Label(single_frame, text=T('lbl_timecode')).pack(side=tk.LEFT, padx=5)
         self.single_tc_var = tk.StringVar(value="00:00:00.000")
         self.single_tc_entry = tk.Entry(single_frame, textvariable=self.single_tc_var, width=14)
         self.single_tc_entry.pack(side=tk.LEFT, padx=5)
 
-        tk.Label(single_frame, text="ou Frame N° :").pack(side=tk.LEFT, padx=(10, 5))
+        tk.Label(single_frame, text=T('lbl_frame_num')).pack(side=tk.LEFT, padx=(10, 5))
         self.single_frame_var = tk.StringVar(value="")
         self.single_frame_entry = tk.Entry(single_frame, textvariable=self.single_frame_var, width=8)
         self.single_frame_entry.pack(side=tk.LEFT, padx=5)
         ToolTip(self.single_frame_entry, "Numéro de frame (ex: 1500). Sera converti en timecode via le FPS.")
 
-        tk.Button(single_frame, text="📸 Extraire cette frame", command=self.extract_single_frame,
+        tk.Button(single_frame, text=T('btn_extract_frame'), command=self.extract_single_frame,
                   bg='#17a2b8', fg='white', font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=10)
 
         # ZONE 3: PROGRESS
@@ -1346,15 +1489,15 @@ class FrameExtractTab(ttk.Frame):
         prog_frame.pack(fill='x', pady=5)
         self.progress = ttk.Progressbar(prog_frame, orient='horizontal', mode='determinate')
         self.progress.pack(fill='x', pady=5)
-        self.lbl_status = tk.Label(prog_frame, text="Prêt", fg="blue")
+        self.lbl_status = tk.Label(prog_frame, text=T('lbl_ready'), fg="blue")
         self.lbl_status.pack()
 
         # ZONE 4: ACTIONS
         action_frame = tk.Frame(main_frame)
         action_frame.pack(fill='x', pady=10)
-        self.btn_start = tk.Button(action_frame, text="Lancer l'Extraction 🚀", command=self.start_extraction, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
+        self.btn_start = tk.Button(action_frame, text=T('btn_extract'), command=self.start_extraction, bg='#0066ff', fg='white', font=("Arial", 11, "bold"))
         self.btn_start.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
-        self.btn_stop = tk.Button(action_frame, text="STOP 🛑", command=self.stop_process, bg='#FF0000', fg='white', state='disabled')
+        self.btn_stop = tk.Button(action_frame, text=T('btn_stop'), command=self.stop_process, bg='#FF0000', fg='white', state='disabled')
         self.btn_stop.pack(side=tk.LEFT, padx=5)
 
         self.log_text = scrolledtext.ScrolledText(main_frame, height=8)
@@ -1665,7 +1808,7 @@ class MediaInfoTab(ttk.Frame):
         self.file_entry = tk.Entry(input_frame)
         self.file_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
         tk.Button(input_frame, text="Ouvrir", command=self.browse_file, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
-        tk.Button(input_frame, text="Analyser 🔍", command=self.analyze, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(input_frame, text=T('btn_analyze_file'), command=self.analyze, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
 
         if TkinterDnD:
             try:
@@ -2171,8 +2314,8 @@ class PyMkvPropEdit:
         self.notebook.add(self.output_tab, text=T('tab_output'))
         output_controls_frame = tk.Frame(self.output_tab)
         output_controls_frame.pack(fill='x', pady=5)
-        ttk.Checkbutton(output_controls_frame, text="Informations détaillées", variable=self.detailed_output_var).pack(side=tk.LEFT, padx=5)
-        tk.Button(output_controls_frame, text="Sauvegarder Log", command=self.save_log, bg='#008000', fg='white').pack(side=tk.RIGHT, padx=5)
+        ttk.Checkbutton(output_controls_frame, text=T('chk_detailed'), variable=self.detailed_output_var).pack(side=tk.LEFT, padx=5)
+        tk.Button(output_controls_frame, text=T('btn_save_log'), command=self.save_log, bg='#008000', fg='white').pack(side=tk.RIGHT, padx=5)
         self.output_text = scrolledtext.ScrolledText(self.output_tab, height=20)
         self.output_text.pack(fill='both', expand=True, pady=5)
 
@@ -2210,13 +2353,13 @@ class PyMkvPropEdit:
         # CHAPTERS TAB
         self.chapters_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.chapters_tab, text=T('tab_chapters'))
-        tk.Label(self.chapters_tab, text="Fichier de chapitres (XML):").pack(pady=10)
+        tk.Label(self.chapters_tab, text=T('lbl_chapters_file')).pack(pady=10)
         self.chapters_file_entry = tk.Entry(self.chapters_tab)
         self.chapters_file_entry.pack(fill='x', padx=5, pady=5)
         btn_frame_chapters_top = tk.Frame(self.chapters_tab)
         btn_frame_chapters_top.pack(pady=5)
-        tk.Button(btn_frame_chapters_top, text="Parcourir", command=self.browse_chapters, bg='#008000', fg='white').pack(side='left', padx=5)
-        tk.Button(btn_frame_chapters_top, text="Charger & Éditer", command=self.load_edit_chapters, bg='#008000', fg='white').pack(side='left', padx=5)
+        tk.Button(btn_frame_chapters_top, text=T('btn_browse'), command=self.browse_chapters, bg='#008000', fg='white').pack(side='left', padx=5)
+        tk.Button(btn_frame_chapters_top, text=T('btn_load_edit'), command=self.load_edit_chapters, bg='#008000', fg='white').pack(side='left', padx=5)
 
         tree_frame = tk.Frame(self.chapters_tab)
         tree_frame.pack(fill='both', expand=True, pady=5)
@@ -2234,34 +2377,34 @@ class PyMkvPropEdit:
 
         btn_frame_chapters = tk.Frame(self.chapters_tab)
         btn_frame_chapters.pack(pady=5)
-        tk.Button(btn_frame_chapters, text="Ajouter chapitre", command=self.add_chapter, bg='#0066ff', fg='white').pack(side='left', padx=5)
-        tk.Button(btn_frame_chapters, text="Supprimer chapitre", command=self.remove_chapter, bg='#FF0000', fg='white').pack(side='left', padx=5)
-        tk.Label(self.chapters_tab, text="Suffixe:").pack(pady=10)
+        tk.Button(btn_frame_chapters, text=T('btn_add_chapter'), command=self.add_chapter, bg='#0066ff', fg='white').pack(side='left', padx=5)
+        tk.Button(btn_frame_chapters, text=T('btn_del_chapter'), command=self.remove_chapter, bg='#FF0000', fg='white').pack(side='left', padx=5)
+        tk.Label(self.chapters_tab, text=T('lbl_suffix')).pack(pady=10)
         self.chapters_suffix_entry = tk.Entry(self.chapters_tab, width=20)
         self.chapters_suffix_entry.pack(pady=5)
         self.chapters_suffix_entry.insert(0, self.settings.get('chapters_suffix', '.xml'))
 
         chapters_opts = tk.Frame(self.chapters_tab)
         chapters_opts.pack(pady=10)
-        ttk.Checkbutton(chapters_opts, text="Supprimer les chapitres", variable=self.chapters_remove_var).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(chapters_opts, text="Appliquer les noms de chapitres à tous les fichiers", variable=self.apply_chapter_names_var).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(chapters_opts, text=T('chk_remove_chapters'), variable=self.chapters_remove_var).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(chapters_opts, text=T('chk_apply_chapter_names'), variable=self.apply_chapter_names_var).pack(side=tk.LEFT, padx=5)
 
         # COVER IMAGE TAB
         self.attachments_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.attachments_tab, text=T('tab_cover'))
-        tk.Label(self.attachments_tab, text="Ajouter une image de couverture (Jaquette) aux fichiers MKV :", font=("Arial", 10, "bold")).pack(pady=10)
-        tk.Label(self.attachments_tab, text="Sélectionner une image :").pack(pady=5)
+        tk.Label(self.attachments_tab, text=T('lbl_cover_intro'), font=("Arial", 10, "bold")).pack(pady=10)
+        tk.Label(self.attachments_tab, text=T('lbl_select_image')).pack(pady=5)
         self.cover_path_entry = tk.Entry(self.attachments_tab, width=50)
         self.cover_path_entry.pack(pady=5)
         self.cover_path_entry.insert(0, self.settings.get('cover_path', ''))
-        tk.Button(self.attachments_tab, text="Parcourir l'image", command=self.browse_cover_image, bg='#008000', fg='white').pack(pady=5)
-        self.cover_preview = tk.Label(self.attachments_tab, text="Aucun aperçu disponible")
+        tk.Button(self.attachments_tab, text=T('btn_browse_image'), command=self.browse_cover_image, bg='#008000', fg='white').pack(pady=5)
+        self.cover_preview = tk.Label(self.attachments_tab, text=T('lbl_no_preview'))
         self.cover_preview.pack(pady=5)
-        tk.Label(self.attachments_tab, text="Nom de la pièce jointe :").pack(pady=(10, 0))
+        tk.Label(self.attachments_tab, text=T('lbl_attachment_name')).pack(pady=(10, 0))
         self.cover_name_entry = tk.Entry(self.attachments_tab)
         self.cover_name_entry.pack(pady=5)
         self.cover_name_entry.insert(0, self.settings.get('cover_name', 'cover.jpg'))
-        tk.Label(self.attachments_tab, text="Format :").pack(pady=(10, 0))
+        tk.Label(self.attachments_tab, text=T('lbl_cover_format')).pack(pady=(10, 0))
         self.cover_format_var = tk.StringVar(value=self.settings.get('cover_format', 'jpg'))
         format_frame = tk.Frame(self.attachments_tab)
         format_frame.pack(pady=5)
@@ -2271,25 +2414,25 @@ class PyMkvPropEdit:
         # GENERAL TAB
         self.general_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.general_tab, text=T('tab_general'))
-        tk.Label(self.general_tab, text="Titre :").pack(pady=10)
+        tk.Label(self.general_tab, text=T('lbl_title_field')).pack(pady=10)
         self.general_title_entry = tk.Entry(self.general_tab, width=50)
         self.general_title_entry.pack(pady=10)
         self.general_title_entry.insert(0, self.settings.get('general_title', ''))
 
         numbering_frame = tk.Frame(self.general_tab)
         numbering_frame.pack(pady=10)
-        ttk.Checkbutton(numbering_frame, text="Numérotation personnalisée", variable=self.custom_numbering_var).pack(side=tk.LEFT, padx=5)
-        tk.Label(numbering_frame, text="Numéro de départ :").pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(numbering_frame, text=T('chk_custom_numbering'), variable=self.custom_numbering_var).pack(side=tk.LEFT, padx=5)
+        tk.Label(numbering_frame, text=T('lbl_start_num')).pack(side=tk.LEFT, padx=5)
         self.general_start_num_entry = tk.Entry(numbering_frame, width=5)
         self.general_start_num_entry.pack(side=tk.LEFT, padx=5)
         self.general_start_num_entry.insert(0, self.settings.get('general_start_num', '1'))
-        tk.Label(numbering_frame, text="Remplissage :").pack(side=tk.LEFT, padx=5)
+        tk.Label(numbering_frame, text=T('lbl_padding')).pack(side=tk.LEFT, padx=5)
         self.general_padding_entry = tk.Entry(numbering_frame, width=5)
         self.general_padding_entry.pack(side=tk.LEFT, padx=5)
         self.general_padding_entry.insert(0, self.settings.get('general_padding', '0'))
 
-        ttk.Checkbutton(self.general_tab, text="Supprimer tous les tags", variable=self.delete_tags_var).pack(pady=10)
-        tk.Label(self.general_tab, text="Paramètres supplémentaires :").pack(pady=10)
+        ttk.Checkbutton(self.general_tab, text=T('chk_delete_tags'), variable=self.delete_tags_var).pack(pady=10)
+        tk.Label(self.general_tab, text=T('lbl_extra_params')).pack(pady=10)
         self.general_extra_text = scrolledtext.ScrolledText(self.general_tab, height=10, width=60)
         self.general_extra_text.pack(pady=10)
         self.general_extra_text.insert(tk.END, self.settings.get('general_extra', ''))
@@ -2297,43 +2440,43 @@ class PyMkvPropEdit:
         # PRESETS TAB
         self.presets_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.presets_tab, text=T('tab_presets'))
-        tk.Label(self.presets_tab, text="Nom du préréglage :").pack(pady=10)
+        tk.Label(self.presets_tab, text=T('lbl_preset_name')).pack(pady=10)
         self.preset_name_entry = tk.Entry(self.presets_tab)
         self.preset_name_entry.pack(pady=5)
-        tk.Label(self.presets_tab, text="Sélectionner un préréglage :").pack(pady=10)
+        tk.Label(self.presets_tab, text=T('lbl_select_preset')).pack(pady=10)
         self.preset_combo = ttk.Combobox(self.presets_tab, values=list(self.presets.keys()), state='readonly')
         self.preset_combo.pack(pady=5)
         btn_frame_presets = tk.Frame(self.presets_tab)
         btn_frame_presets.pack(pady=10)
-        tk.Button(btn_frame_presets, text="Sauvegarder", command=self.save_preset, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame_presets, text="Charger", command=self.load_preset, bg='#008000', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame_presets, text="Supprimer", command=self.delete_preset, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame_presets, text=T('btn_save_preset'), command=self.save_preset, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame_presets, text=T('btn_load_preset'), command=self.load_preset, bg='#008000', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame_presets, text=T('btn_del_preset'), command=self.delete_preset, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
 
         # OPTIONS TAB
         self.options_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.options_tab, text=T('tab_options'))
-        tk.Label(self.options_tab, text="Chemin de mkvpropedit :").pack(pady=10)
+        tk.Label(self.options_tab, text=T('lbl_mkvpropedit_path')).pack(pady=10)
         self.mkvpropedit_path_entry = tk.Entry(self.options_tab, width=50)
         self.mkvpropedit_path_entry.pack(pady=10)
         self.mkvpropedit_path_entry.insert(0, self.settings.get('mkvpropedit_path', shutil.which('mkvpropedit') or 'mkvpropedit'))
-        tk.Button(self.options_tab, text="Parcourir", command=self.browse_mkvpropedit, bg='#008000', fg='white').pack(pady=5)
-        tk.Label(self.options_tab, text="Chemin de mkvmerge :").pack(pady=10)
+        tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_mkvpropedit, bg='#008000', fg='white').pack(pady=5)
+        tk.Label(self.options_tab, text=T('lbl_mkvmerge_path')).pack(pady=10)
         self.mkvmerge_path_entry = tk.Entry(self.options_tab, width=50)
         self.mkvmerge_path_entry.pack(pady=10)
         self.mkvmerge_path_entry.insert(0, self.settings.get('mkvmerge_path', shutil.which('mkvmerge') or 'mkvmerge'))
-        tk.Button(self.options_tab, text="Parcourir", command=self.browse_mkvmerge, bg='#008000', fg='white').pack(pady=5)
+        tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_mkvmerge, bg='#008000', fg='white').pack(pady=5)
 
-        tk.Label(self.options_tab, text="Chemin de FFmpeg :").pack(pady=10)
+        tk.Label(self.options_tab, text=T('lbl_ffmpeg_path')).pack(pady=10)
         self.ffmpeg_path_entry = tk.Entry(self.options_tab, width=50)
         self.ffmpeg_path_entry.pack(pady=5)
         self.ffmpeg_path_entry.insert(0, self.settings.get('ffmpeg_path', find_ffmpeg()))
-        tk.Button(self.options_tab, text="Parcourir", command=self.browse_ffmpeg, bg='#008000', fg='white').pack(pady=5)
+        tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_ffmpeg, bg='#008000', fg='white').pack(pady=5)
 
-        tk.Label(self.options_tab, text="Chemin de FFprobe :").pack(pady=10)
+        tk.Label(self.options_tab, text=T('lbl_ffprobe_path')).pack(pady=10)
         self.ffprobe_path_entry = tk.Entry(self.options_tab, width=50)
         self.ffprobe_path_entry.pack(pady=5)
         self.ffprobe_path_entry.insert(0, self.settings.get('ffprobe_path', find_ffprobe()))
-        tk.Button(self.options_tab, text="Parcourir", command=self.browse_ffprobe, bg='#008000', fg='white').pack(pady=5)
+        tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_ffprobe, bg='#008000', fg='white').pack(pady=5)
 
         tk.Label(self.options_tab, text=T('lbl_theme')).pack(pady=10)
         theme_frame = tk.Frame(self.options_tab)
@@ -2355,8 +2498,8 @@ class PyMkvPropEdit:
         # [NEW] Export/Import buttons
         io_frame = tk.Frame(self.options_tab)
         io_frame.pack(pady=10)
-        tk.Button(io_frame, text="Exporter paramètres 📤", command=self.export_settings, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(io_frame, text="Importer paramètres 📥", command=self.import_settings, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(io_frame, text=T('btn_export_settings'), command=self.export_settings, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(io_frame, text=T('btn_import_settings'), command=self.import_settings, bg='#0066ff', fg='white').pack(side=tk.LEFT, padx=5)
 
         # AUDIO SYNC TAB
         self.sync_tab = ttk.Frame(self.notebook)
