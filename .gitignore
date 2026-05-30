@@ -8,7 +8,7 @@ pymkvpropedit.log
 
 # Old versions
 *.PYW
-!PyMkvPropEdit v3.5.pyw
+!PyMkvPropEdit v3.6.pyw
 
 # Python
 __pycache__/

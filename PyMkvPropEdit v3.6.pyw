@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-PyMkvPropEdit v3.4 - Batch GUI pour mkvpropedit
+PyMkvPropEdit v3.6 - Batch GUI pour mkvpropedit
 Refactored with improvements and new features.
+
+Changelog v3.6:
+- [NEW] First-launch wizard: choose between system MKVToolNix or bundled MKVToolNix
+- [NEW] Bundled MKVToolNix binaries (mkvpropedit, mkvmerge, mkvextract) — 100% standalone EXE
+- [NEW] Portable EXE version: no Python required, all dependencies bundled
+- [FIX] VERSION bump 3.5 → 3.6
 
 Changelog v3.5:
 - [NEW] Bilingual EN/FR UI — language toggle in Options tab (restart to apply)
@@ -101,7 +107,7 @@ if getattr(_sys, 'frozen', False):
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
     _ASSET_DIR = APP_DIR
-VERSION = "3.5"
+VERSION = "3.6"
 
 SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
 PRESETS_FILE = os.path.join(APP_DIR, "presets.json")
@@ -257,6 +263,13 @@ STRINGS: dict = {
         'notif_extract_done': 'Extraction terminée', 'notif_extract_body': 'Images extraites dans le dossier de sortie.',
         # numpy missing
         'warn_no_scipy': '⚠️ Modules numpy/scipy manquants.', 'warn_install_scipy': 'Installez-les via : pip install numpy scipy',
+        # First launch wizard
+        'wizard_title': 'Premier lancement — Configuration MKVToolNix',
+        'wizard_msg': 'Choisissez comment utiliser les outils MKVToolNix :',
+        'wizard_system': 'MKVToolNix système\n(utiliser la version installée sur votre PC)',
+        'wizard_bundled': 'MKVToolNix intégré\n(inclus dans l\'app, aucune installation requise)',
+        'wizard_bundled_unavail': '(non disponible dans cette version)',
+        'wizard_confirm': 'Confirmer',
     },
     'en': {
         # Tabs
@@ -359,6 +372,13 @@ STRINGS: dict = {
         'notif_sync_body': 'Batch sync finished.',
         'notif_extract_done': 'Extraction complete',
         'notif_extract_body': 'Frames extracted to output folder.',
+        # First launch wizard
+        'wizard_title': 'First Launch — MKVToolNix Configuration',
+        'wizard_msg': 'Choose how to use MKVToolNix tools:',
+        'wizard_system': 'System MKVToolNix\n(use the version installed on your PC)',
+        'wizard_bundled': 'Bundled MKVToolNix\n(included in the app, no installation needed)',
+        'wizard_bundled_unavail': '(not available in this build)',
+        'wizard_confirm': 'Confirm',
     }
 }
 
@@ -2029,6 +2049,95 @@ class PyMkvPropEdit:
         self.status_bar = tk.Label(self.root, text=f"PyMkvPropEdit v{VERSION} — Prêt", bd=1, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9))
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         self._update_status_bar()
+
+        # First-launch wizard (deferred so UI is fully rendered first)
+        self.root.after(200, self._check_first_launch)
+
+    def _check_first_launch(self):
+        """Show MKVToolNix wizard on first launch (mkvtools_source not yet in settings)."""
+        if 'mkvtools_source' not in self.settings:
+            self._show_mkvtools_wizard()
+
+    def _show_mkvtools_wizard(self):
+        """First-launch dialog: choose system MKVToolNix vs bundled."""
+        bundled_dir = os.path.join(_ASSET_DIR, 'mkvtools')
+        bundled_available = (
+            os.path.isdir(bundled_dir) and
+            os.path.exists(os.path.join(bundled_dir, 'mkvpropedit.exe'))
+        )
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title(T('wizard_title'))
+        dlg.geometry("540x330")
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.transient(self.root)
+        dlg.update_idletasks()
+        x = (dlg.winfo_screenwidth() - 540) // 2
+        y = (dlg.winfo_screenheight() - 330) // 2
+        dlg.geometry(f"540x330+{x}+{y}")
+
+        # Set icon
+        try:
+            icon_path = resolve_asset("vivi.ico")
+            if os.path.exists(icon_path):
+                _wiz_img = Image.open(icon_path)
+                _wiz_photo = ImageTk.PhotoImage(_wiz_img)
+                dlg.iconphoto(True, _wiz_photo)
+        except Exception:
+            pass
+
+        choice_var = tk.StringVar(value='system')
+
+        tk.Label(dlg, text="⚙️  " + T('wizard_title'),
+                 font=('Arial', 12, 'bold')).pack(pady=14)
+        tk.Label(dlg, text=T('wizard_msg'), font=('Arial', 10)).pack(pady=2)
+
+        frame = tk.Frame(dlg, bd=1, relief='groove')
+        frame.pack(pady=8, padx=24, fill='x')
+
+        tk.Radiobutton(
+            frame, text=T('wizard_system'),
+            variable=choice_var, value='system',
+            justify='left', font=('Arial', 10)
+        ).pack(anchor='w', padx=16, pady=8)
+
+        rb_bnd = tk.Radiobutton(
+            frame, text=T('wizard_bundled'),
+            variable=choice_var, value='bundled',
+            justify='left', font=('Arial', 10),
+            state='normal' if bundled_available else 'disabled'
+        )
+        rb_bnd.pack(anchor='w', padx=16, pady=8)
+        if not bundled_available:
+            tk.Label(frame, text=T('wizard_bundled_unavail'),
+                     fg='gray', font=('Arial', 8, 'italic')).pack(anchor='w', padx=40)
+
+        def on_confirm():
+            source = choice_var.get()
+            self.settings['mkvtools_source'] = source
+            if source == 'bundled' and bundled_available:
+                bp = os.path.join(bundled_dir, 'mkvpropedit.exe')
+                bm = os.path.join(bundled_dir, 'mkvmerge.exe')
+                self.mkvpropedit_path_entry.delete(0, tk.END)
+                self.mkvpropedit_path_entry.insert(0, bp)
+                self.mkvmerge_path_entry.delete(0, tk.END)
+                self.mkvmerge_path_entry.insert(0, bm)
+            else:
+                sp = shutil.which('mkvpropedit') or 'mkvpropedit'
+                sm = shutil.which('mkvmerge') or 'mkvmerge'
+                self.mkvpropedit_path_entry.delete(0, tk.END)
+                self.mkvpropedit_path_entry.insert(0, sp)
+                self.mkvmerge_path_entry.delete(0, tk.END)
+                self.mkvmerge_path_entry.insert(0, sm)
+            self.save_settings()
+            dlg.destroy()
+
+        tk.Button(dlg, text=T('wizard_confirm'), command=on_confirm,
+                  bg='#008000', fg='white', font=('Arial', 10, 'bold'),
+                  width=14, pady=4).pack(pady=14)
+
+        self.root.wait_window(dlg)
 
     def _update_status_bar(self):
         """Update the status bar with file count."""

@@ -3,10 +3,10 @@
 
 # PyMkvPropEdit
 
-![Version](https://img.shields.io/badge/version-3.5-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.6-blue?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![MKVToolNix](https://img.shields.io/badge/requires-MKVToolNix-orange?style=for-the-badge)
+![MKVToolNix](https://img.shields.io/badge/MKVToolNix-bundled%20%2F%20system-orange?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 [![Wiki](https://img.shields.io/badge/wiki-available-purple?style=for-the-badge)](https://github.com/Crysisjim/PyMkvPropEdit/wiki)
 
@@ -40,17 +40,19 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 
 > **Aucun Python requis** — `mkvpropedit`, `mkvmerge` et dépendances sont embarqués.
 
-1. **[📦 Télécharger PyMkvPropEdit v3.5 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Télécharger PyMkvPropEdit v3.6 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extraire le ZIP
 3. Double-cliquer **`PyMkvPropEdit.exe`**
+4. Au **premier lancement**, choisir entre MKVToolNix **intégré** (aucune installation requise) ou **système** (MKVToolNix déjà installé)
 
 ### 🇬🇧 EXE Portable Version (Recommended)
 
-> **No Python required** — `mkvpropedit`, `mkvmerge` and dependencies are bundled.
+> **No Python required** — `mkvpropedit`, `mkvmerge` and all dependencies bundled.
 
-1. **[📦 Download PyMkvPropEdit v3.5 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Download PyMkvPropEdit v3.6 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extract the ZIP
 3. Double-click **`PyMkvPropEdit.exe`**
+4. On **first launch**, choose between **bundled** MKVToolNix (no installation needed) or **system** MKVToolNix (already installed)
 
 ### 🇫🇷 Version Script (Développeurs)
 
