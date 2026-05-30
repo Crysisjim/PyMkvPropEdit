@@ -12,6 +12,8 @@ Welcome to the **PyMkvPropEdit** wiki!
 | [🏠 Home](Home) | Page d'accueil | Home page |
 | [⚡ Installation](Installation) | Guide d'installation | Installation guide |
 | [🚀 Démarrage rapide](Quick-Start) | Premiers pas | Getting started |
+| [🚀 Batch Pro](Batch-Pro) | Renommage auto + métadonnées Kodi | Auto-rename + Kodi metadata |
+| [🔑 Clés API](API-Keys) | Obtenir les clés TVDB / TMDB | Get TVDB / TMDB keys |
 | [🎵 Audio Sync](Audio-Sync) | Synchronisation audio FFT | FFT audio sync guide |
 | [🗂️ Onglets](Tabs-Overview) | Description de chaque onglet | Each tab explained |
 | [⚙️ Options & Paramètres](Options-Settings) | Configuration | Configuration guide |

@@ -1,7 +1,7 @@
 @echo off
-title PyMkvPropEdit v3.4 - Launcher
+title PyMkvPropEdit v3.7 - Launcher
 echo ============================================
-echo   PyMkvPropEdit v3.4 - Batch GUI mkvpropedit
+echo   PyMkvPropEdit v3.7 - Batch GUI mkvpropedit
 echo ============================================
 echo.
 
@@ -27,4 +27,4 @@ if errorlevel 1 (
 
 echo.
 echo Demarrage de PyMkvPropEdit...
-start "" pythonw "%~dp0PyMkvPropEdit v3.4.pyw"
+start "" pythonw "%~dp0PyMkvPropEdit v3.7.pyw"

@@ -3,7 +3,7 @@
 
 # PyMkvPropEdit
 
-![Version](https://img.shields.io/badge/version-3.6-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.7-blue?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![MKVToolNix](https://img.shields.io/badge/MKVToolNix-bundled%20%2F%20system-orange?style=for-the-badge)
@@ -40,7 +40,7 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 
 > **Aucun Python requis** — `mkvpropedit`, `mkvmerge` et dépendances sont embarqués.
 
-1. **[📦 Télécharger PyMkvPropEdit v3.6 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Télécharger PyMkvPropEdit v3.7 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extraire le ZIP
 3. Double-cliquer **`PyMkvPropEdit.exe`**
 4. Au **premier lancement**, choisir entre MKVToolNix **intégré** (aucune installation requise) ou **système** (MKVToolNix déjà installé)
@@ -49,7 +49,7 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 
 > **No Python required** — `mkvpropedit`, `mkvmerge` and all dependencies bundled.
 
-1. **[📦 Download PyMkvPropEdit v3.6 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Download PyMkvPropEdit v3.7 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extract the ZIP
 3. Double-click **`PyMkvPropEdit.exe`**
 4. On **first launch**, choose between **bundled** MKVToolNix (no installation needed) or **system** MKVToolNix (already installed)
@@ -60,7 +60,7 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 git clone https://github.com/Crysisjim/PyMkvPropEdit.git
 cd PyMkvPropEdit
 pip install -r requirements.txt
-pythonw "PyMkvPropEdit v3.5.pyw"
+pythonw "PyMkvPropEdit v3.7.pyw"
 ```
 
 ### 🇬🇧 Script Version (Developers)
@@ -69,7 +69,7 @@ pythonw "PyMkvPropEdit v3.5.pyw"
 git clone https://github.com/Crysisjim/PyMkvPropEdit.git
 cd PyMkvPropEdit
 pip install -r requirements.txt
-pythonw "PyMkvPropEdit v3.5.pyw"
+pythonw "PyMkvPropEdit v3.7.pyw"
 ```
 
 ---
@@ -78,6 +78,7 @@ pythonw "PyMkvPropEdit v3.5.pyw"
 
 | Onglet / Tab | 🇫🇷 | 🇬🇧 |
 |-------------|-----|-----|
+| 🚀 **Batch Pro** | Renommage auto TVDB/TMDB/TVmaze + métadonnées Kodi + réordonnancement pistes + sync | Auto-rename TVDB/TMDB/TVmaze + Kodi metadata + track reorder + sync |
 | 🎬 **Video / Audio / Sous-titres** | Nom, langue, flags default/forced par piste | Name, language, default/forced flags per track |
 | 📖 **Chapitres / Chapters** | Import XML, édition en ligne, suppression | XML import, inline editing, deletion |
 | 🖼️ **Image de couverture / Cover** | Ajout/remplacement jaquette JPG/PNG | Add/replace JPG/PNG cover art |
@@ -92,6 +93,7 @@ pythonw "PyMkvPropEdit v3.5.pyw"
 
 ### 🇫🇷 Points forts &nbsp;&nbsp; / &nbsp;&nbsp; 🇬🇧 Highlights
 
+- ✅ **Batch Pro** — renommage auto + métadonnées Kodi (TVDB/TMDB/TVmaze) &nbsp;/&nbsp; **Batch Pro** — auto-rename + Kodi metadata (TVDB/TMDB/TVmaze)
 - ✅ **Traitement batch** — des dizaines de fichiers en une opération &nbsp;/&nbsp; **Batch processing** — dozens of files at once
 - ✅ **Drag & Drop** — glisser-déposer les MKV &nbsp;/&nbsp; drag & drop MKV files
 - ✅ **Interface bilingue EN/FR** — toggle dans Options &nbsp;/&nbsp; **Bilingual EN/FR UI** — switchable in Options
@@ -116,11 +118,44 @@ pythonw "PyMkvPropEdit v3.5.pyw"
 
 ---
 
+## 🔑 Clés API (onglet Batch Pro) / API Keys (Batch Pro tab)
+
+> 🇫🇷 Le renommage automatique et les métadonnées utilisent **TVDB**, **TMDB** et **TVmaze**.
+> **TVmaze** fonctionne sans clé (séries uniquement). **TVDB** et **TMDB** nécessitent une clé API **gratuite**.
+> Collez vos clés dans **Options** (champs masqués, sauvegardés localement).
+>
+> 🇬🇧 Auto-rename and metadata use **TVDB**, **TMDB** and **TVmaze**.
+> **TVmaze** needs no key (series only). **TVDB** and **TMDB** require a **free** API key.
+> Paste your keys in **Options** (masked fields, stored locally).
+
+### 🎬 TheTVDB (recommandé pour Kodi / recommended for Kodi)
+
+1. Créer un compte sur **[thetvdb.com](https://thetvdb.com/auth/register)**
+2. Aller dans **[Dashboard → API Access](https://thetvdb.com/dashboard/account/apikey)**
+3. Générer une clé **API v4** (project key)
+4. Copier la clé dans **Options → Clé API TheTVDB**
+
+### 🎥 TMDB (réalisateurs / producteurs / studios — directors / producers / studios)
+
+1. Créer un compte sur **[themoviedb.org](https://www.themoviedb.org/signup)**
+2. Aller dans **[Paramètres → API](https://www.themoviedb.org/settings/api)**
+3. Demander une clé **API (v3 auth)** — usage personnel / gratuit
+4. Copier la **API Key (v3 auth)** dans **Options → Clé API TMDB**
+
+### 🆓 TVmaze
+
+- Aucune clé requise / No key needed — fallback automatique pour les séries / automatic series fallback.
+
+> 🔒 Les clés sont stockées uniquement dans votre `pymkvpropedit_settings.json` local, jamais transmises ailleurs.
+> Keys are stored only in your local `pymkvpropedit_settings.json`, never sent anywhere else.
+
+---
+
 ## 🗂️ Structure
 
 ```
 PyMkvPropEdit/
-├── PyMkvPropEdit v3.5.pyw   # Application principale / Main app
+├── PyMkvPropEdit v3.7.pyw   # Application principale / Main app
 ├── run.bat                  # Launcher (script version)
 ├── requirements.txt         # Python dependencies
 ├── vivi.png / vivi.ico      # App icon
@@ -137,6 +172,30 @@ PyMkvPropEdit/
 ## 🆕 Changelog
 
 <details open>
+<summary><b>v3.7 — Batch Pro: FileBot-like auto-rename + Kodi/MetaX-level metadata</b></summary>
+
+**🇫🇷 Nouvel onglet Batch Pro 🚀**
+- **[NEW]** Renommage automatique via **TVDB → TMDB → TVmaze** (combobox choix API + langue)
+  - Séries : `Titre - S01E07 - Nom épisode.mkv` &nbsp;•&nbsp; Films : `Titre (2025) 1080p x265 Dolby Vision.mkv`
+  - Résolution / codec / HDR détectés automatiquement (mkvmerge + ffprobe)
+- **[NEW]** **Métadonnées Kodi/MetaX** : tags MKV (titre, show, description courte/longue, genres, acteurs, **réalisateur/scénariste/producteur/studio**, rating, IMDB, date) + NFO `kodi-metadata` embarqué + cover art téléchargé
+- **[NEW]** **Picker visuel** multi-sources : choisir indépendamment illustration / description / synopsis / cast / crew / genres entre TVDB, TMDB et TVmaze (miniatures + dimensions, "appliquer à tous")
+- **[NEW]** **Réordonnancement des pistes** par modèle (type + langue + forced), détection des fichiers hétérogènes
+- **[NEW]** **Pipeline combiné** : sync audio + réordonnancement en 1 seul passage mkvmerge, puis mkvpropedit, métadonnées, renommage/déplacement
+- **[NEW]** Dossier de sortie optionnel, barre de progression dédiée (%/ETA/temps écoulé/compteur N total)
+- **[NEW]** Champs clés API TVDB + TMDB dans Options
+
+**🇬🇧 New Batch Pro tab 🚀**
+- **[NEW]** Auto-rename via **TVDB → TMDB → TVmaze** (API + language picker)
+- **[NEW]** **Kodi/MetaX-level metadata**: MKV tags (title, show, short/long description, genres, actors, **director/writer/producer/studio**, rating, IMDB, date) + embedded `kodi-metadata` NFO + downloaded cover art
+- **[NEW]** **Visual multi-source picker**: pick illustration / description / synopsis / cast / crew / genres independently across TVDB, TMDB, TVmaze
+- **[NEW]** **Track reordering** by template (type + language + forced), heterogeneous-file detection
+- **[NEW]** **Combined pipeline**: audio sync + reorder in a single mkvmerge pass, then mkvpropedit, metadata, rename/move
+- **[NEW]** Optional output folder, dedicated progress bar (%/ETA/elapsed/N total counter)
+
+</details>
+
+<details>
 <summary><b>v3.5 — Bilingual UI + Windows 11 Notifications + EXE Portable</b></summary>
 
 - **[NEW]** Interface bilingue EN/FR — toggle dans Options / EN/FR bilingual UI

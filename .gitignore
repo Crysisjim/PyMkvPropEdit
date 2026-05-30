@@ -8,7 +8,7 @@ pymkvpropedit.log
 
 # Old versions
 *.PYW
-!PyMkvPropEdit v3.6.pyw
+!PyMkvPropEdit v3.7.pyw
 
 # Python
 __pycache__/
@@ -19,9 +19,19 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+pymkv_build_env/
+*.spec
+
+# Bundled binaries (shipped in release ZIPs, not in repo)
+mkvtools/
+PyMkvPropEdit-v3.7-portable-EXE/
 
 # Distribution / ZIP
 *.zip
+
+# Backups & personal
+*.bak
+Preset et reglages perso à ne pas supprimer/
 
 # IDE
 .vscode/

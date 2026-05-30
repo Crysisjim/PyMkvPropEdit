@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-PyMkvPropEdit v3.6 - Batch GUI pour mkvpropedit
+PyMkvPropEdit v3.7 - Batch GUI pour mkvpropedit
 Refactored with improvements and new features.
+
+Changelog v3.7:
+- [NEW] Batch Pro tab: auto-rename (TVDB/TMDB/TVmaze) + track reorder + sync pipeline
+- [NEW] Filename parser (series/movie detection, season/episode/year)
+- [NEW] Video metadata detection (resolution/codec/HDR) for movie naming
+- [NEW] Single-pass mkvmerge combining --sync + --track-order
+- [NEW] TVDB/TMDB API keys in Options (stored locally)
 
 Changelog v3.6:
 - [NEW] First-launch wizard: choose between system MKVToolNix or bundled MKVToolNix
@@ -87,6 +94,9 @@ import uuid
 import shutil
 import re
 import time
+import urllib.request
+import urllib.parse
+import urllib.error
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -107,7 +117,7 @@ if getattr(_sys, 'frozen', False):
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
     _ASSET_DIR = APP_DIR
-VERSION = "3.6"
+VERSION = "3.7"
 
 SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
 PRESETS_FILE = os.path.join(APP_DIR, "presets.json")
@@ -305,6 +315,48 @@ STRINGS: dict = {
         'summary_caption_success': 'Strike! Victory!',
         'summary_caption_warning': 'Attention !',
         'summary_caption_failure': 'Échec...',
+        # Batch Pro tab
+        'tab_batchpro': 'Batch Pro 🚀',
+        'bp_step1': '① Fichiers',
+        'bp_step2': '② Renommage Auto (TVDB / TMDB / TVmaze)',
+        'bp_step3': '③ Ordre des pistes',
+        'bp_step4': '④ Pipeline & Exécution',
+        'bp_search_names': '🔍 Rechercher les noms',
+        'bp_col_file': 'Fichier original',
+        'bp_col_detected': 'Détecté',
+        'bp_col_newname': 'Nouveau nom',
+        'bp_col_status': 'Statut',
+        'bp_lang_search': 'Langue recherche :',
+        'bp_chk_sync': 'Synchroniser audio',
+        'bp_chk_props': 'Appliquer paramètres mkvpropedit',
+        'bp_chk_reorder': 'Réordonner les pistes',
+        'bp_chk_rename': 'Renommer fichier (nom auto)',
+        'bp_run': '🚀 Lancer le pipeline complet',
+        'bp_load_ref': 'Charger fichier référence',
+        'bp_track_up': '↑ Monter',
+        'bp_track_down': '↓ Descendre',
+        'bp_save_template': '💾 Enregistrer modèle',
+        'bp_reorder_hint': 'Définissez l\'ordre voulu. Appliqué à tous les fichiers (matching type+langue+forced).',
+        'bp_no_apikey': 'Aucune clé API configurée — utilisation de TVmaze (séries uniquement). Configurez TVDB/TMDB dans Options.',
+        'bp_load_first': '📂 Premier fichier de la liste',
+        'bp_chk_embed_meta': 'Intégrer métadonnées (tags + cover art)',
+        'bp_pick_meta': 'Choisir sources métadonnées',
+        'bp_picker_title': 'Sélectionner illustration / description',
+        'bp_picker_cover': 'Illustration',
+        'bp_picker_desc': 'Description courte',
+        'bp_picker_synopsis': 'Synopsis long',
+        'bp_picker_apply_all': 'Appliquer ce choix à tous les fichiers de la liste',
+        'bp_picker_loading': 'Chargement...',
+        'bp_picker_cast': 'Cast / Artiste',
+        'bp_picker_genres': 'Genres',
+        'bp_searching': 'Recherche en cours...',
+        'bp_search_done': 'Recherche terminée.',
+        'bp_choose': 'Choisir...',
+        'bp_pick_match': 'Sélectionner la correspondance',
+        'bp_col_track': 'Piste', 'bp_col_type': 'Type', 'bp_col_lang': 'Langue',
+        'bp_col_name_tr': 'Nom', 'bp_col_forced': 'Forcé',
+        'lbl_tvdb_key': 'Clé API TheTVDB :',
+        'lbl_tmdb_key': 'Clé API TMDB :',
     },
     'en': {
         # Tabs
@@ -439,6 +491,48 @@ STRINGS: dict = {
         'summary_caption_success': 'Strike! Victory!',
         'summary_caption_warning': 'Warning!',
         'summary_caption_failure': 'Failed...',
+        # Batch Pro tab
+        'tab_batchpro': 'Batch Pro 🚀',
+        'bp_step1': '① Files',
+        'bp_step2': '② Auto-Rename (TVDB / TMDB / TVmaze)',
+        'bp_step3': '③ Track Order',
+        'bp_step4': '④ Pipeline & Execution',
+        'bp_search_names': '🔍 Search names',
+        'bp_col_file': 'Original file',
+        'bp_col_detected': 'Detected',
+        'bp_col_newname': 'New name',
+        'bp_col_status': 'Status',
+        'bp_lang_search': 'Search language:',
+        'bp_chk_sync': 'Sync audio',
+        'bp_chk_props': 'Apply mkvpropedit settings',
+        'bp_chk_reorder': 'Reorder tracks',
+        'bp_chk_rename': 'Rename file (auto name)',
+        'bp_run': '🚀 Run full pipeline',
+        'bp_load_ref': 'Load reference file',
+        'bp_track_up': '↑ Up',
+        'bp_track_down': '↓ Down',
+        'bp_save_template': '💾 Save template',
+        'bp_reorder_hint': 'Define the desired order. Applied to all files (matching type+lang+forced).',
+        'bp_no_apikey': 'No API key configured — using TVmaze (series only). Configure TVDB/TMDB in Options.',
+        'bp_load_first': '📂 First file in list',
+        'bp_chk_embed_meta': 'Embed metadata (tags + cover art)',
+        'bp_pick_meta': 'Choose metadata sources',
+        'bp_picker_title': 'Select cover / description',
+        'bp_picker_cover': 'Cover art',
+        'bp_picker_desc': 'Short description',
+        'bp_picker_synopsis': 'Long synopsis',
+        'bp_picker_apply_all': 'Apply this choice to all files in the list',
+        'bp_picker_loading': 'Loading...',
+        'bp_picker_cast': 'Cast / Artist',
+        'bp_picker_genres': 'Genres',
+        'bp_searching': 'Searching...',
+        'bp_search_done': 'Search complete.',
+        'bp_choose': 'Choose...',
+        'bp_pick_match': 'Select match',
+        'bp_col_track': 'Track', 'bp_col_type': 'Type', 'bp_col_lang': 'Language',
+        'bp_col_name_tr': 'Name', 'bp_col_forced': 'Forced',
+        'lbl_tvdb_key': 'TheTVDB API key:',
+        'lbl_tmdb_key': 'TMDB API key:',
     }
 }
 
@@ -657,6 +751,755 @@ def _scan_ffmpeg_installs() -> list:
         })
 
     return results
+
+
+# ============================================================================
+# MEDIA FILENAME PARSING — detect series/movie, season/episode, year
+# ============================================================================
+
+# Common release-group junk to strip
+_JUNK_TOKENS = re.compile(
+    r'\b(1080p|2160p|720p|480p|4k|uhd|hdr10\+?|hdr|dolby\s*vision|dv|web-?dl|web-?rip|'
+    r'webrip|web|bluray|blu-?ray|bdrip|brrip|hdtv|dvdrip|x264|x265|h\.?264|h\.?265|'
+    r'hevc|avc|av1|aac|ac3|eac3|dts(-hd)?|truehd|atmos|flac|opus|10bit|8bit|'
+    r'vostfr|multi|vf|vff|vfq|vo|subfr|french|english|truefrench)\b',
+    re.IGNORECASE
+)
+
+
+def parse_media_filename(filename):
+    """Parse a media filename to detect type, title, season, episode, year.
+
+    Returns dict:
+        {kind: 'series'|'movie', title, season, episode, episode_end, year, raw}
+    """
+    name = os.path.splitext(os.path.basename(filename))[0]
+    result = {
+        'kind': None, 'title': '', 'season': None, 'episode': None,
+        'episode_end': None, 'year': None, 'raw': name,
+    }
+
+    # Normalize separators
+    work = name.replace('_', ' ').replace('.', ' ')
+
+    # --- Series patterns ---
+    # SxxExx(-Exx) / SxxExxExx
+    m = re.search(r'[Ss](\d{1,2})[\s._-]*[Ee](\d{1,3})(?:[\s._-]*[Ee](\d{1,3}))?', name)
+    if m:
+        result['kind'] = 'series'
+        result['season'] = int(m.group(1))
+        result['episode'] = int(m.group(2))
+        if m.group(3):
+            result['episode_end'] = int(m.group(3))
+        # Title = everything before the SxxExx marker
+        title = work[:m.start()].strip(' -._')
+        result['title'] = _clean_title(title)
+        return result
+
+    # 1x07 style
+    m = re.search(r'\b(\d{1,2})x(\d{1,3})\b', name)
+    if m:
+        result['kind'] = 'series'
+        result['season'] = int(m.group(1))
+        result['episode'] = int(m.group(2))
+        title = work[:m.start()].strip(' -._')
+        result['title'] = _clean_title(title)
+        return result
+
+    # --- Movie pattern: title (year) ---
+    m = re.search(r'\b(19\d{2}|20\d{2})\b', name)
+    if m:
+        result['kind'] = 'movie'
+        result['year'] = int(m.group(1))
+        title = work[:m.start()].strip(' -._()[]')
+        result['title'] = _clean_title(title)
+        return result
+
+    # Fallback: unknown, treat as movie with cleaned title
+    result['kind'] = 'movie'
+    result['title'] = _clean_title(work)
+    return result
+
+
+def _clean_title(title):
+    """Strip release-group junk and normalize a title string."""
+    # Remove bracketed groups [xxx] (yyy)
+    title = re.sub(r'[\[\(][^\]\)]*[\]\)]', ' ', title)
+    # Remove junk tokens
+    title = _JUNK_TOKENS.sub(' ', title)
+    # Collapse whitespace and trailing dashes
+    title = re.sub(r'\s+', ' ', title).strip(' -._')
+    # Strip a trailing isolated single letter (broken possessive: "Hero s" → "Hero")
+    title = re.sub(r'\s+[a-z]$', '', title)
+    return title
+
+
+# ============================================================================
+# VIDEO METADATA DETECTION — resolution, codec, HDR
+# ============================================================================
+
+def detect_video_metadata(mkv_path, mkvmerge_path, ffprobe_path):
+    """Detect resolution label, codec, and HDR type from a video file.
+
+    Returns dict: {resolution, codec, hdr, width, height}
+    """
+    meta = {'resolution': '', 'codec': '', 'hdr': '', 'width': 0, 'height': 0}
+
+    # --- mkvmerge -J for codec + dimensions ---
+    try:
+        res = run_hidden([mkvmerge_path, "-J", mkv_path])
+        info = json.loads(res.stdout)
+        for t in info.get("tracks", []):
+            if t.get("type") == "video":
+                props = t.get("properties", {})
+                dim = props.get("pixel_dimensions", "")  # "1920x1080"
+                if "x" in dim:
+                    w, h = dim.split("x")
+                    meta['width'] = int(w)
+                    meta['height'] = int(h)
+                codec_id = props.get("codec_id", "")
+                codec_name = t.get("codec", "")
+                meta['codec'] = _normalize_codec(codec_id, codec_name)
+                break
+    except Exception as e:
+        logger.debug(f"mkvmerge metadata failed: {e}")
+
+    # --- ffprobe for HDR detection ---
+    try:
+        cmd = [ffprobe_path, "-v", "error", "-select_streams", "v:0",
+               "-show_entries",
+               "stream=color_transfer,color_primaries,color_space:stream_side_data=dv_profile",
+               "-of", "json", mkv_path]
+        out = run_hidden(cmd).stdout
+        pdata = json.loads(out)
+        streams = pdata.get("streams", [])
+        if streams:
+            s = streams[0]
+            transfer = (s.get("color_transfer") or "").lower()
+            # Dolby Vision: side_data dv_profile present
+            side = s.get("side_data_list", [])
+            has_dv = any("dv_profile" in sd or sd.get("side_data_type", "").lower().startswith("dolby")
+                         for sd in side) if isinstance(side, list) else False
+            if not has_dv and "dv_profile" in str(pdata):
+                has_dv = True
+            if has_dv:
+                meta['hdr'] = 'Dolby Vision'
+            elif transfer in ('smpte2084', 'arib-std-b67'):
+                meta['hdr'] = 'HDR10' if transfer == 'smpte2084' else 'HLG'
+    except Exception as e:
+        logger.debug(f"ffprobe HDR detection failed: {e}")
+
+    # --- Resolution label from height ---
+    h = meta['height']
+    w = meta['width']
+    if h >= 2000 or w >= 3000:
+        meta['resolution'] = '2160p'
+    elif h >= 1000 or w >= 1800:
+        meta['resolution'] = '1080p'
+    elif h >= 700 or w >= 1200:
+        meta['resolution'] = '720p'
+    elif h >= 500:
+        meta['resolution'] = '576p'
+    elif h > 0:
+        meta['resolution'] = '480p'
+
+    return meta
+
+
+def _normalize_codec(codec_id, codec_name):
+    """Map mkv codec id/name to a clean display label."""
+    c = (codec_id + " " + codec_name).upper()
+    if 'V_AV1' in c or 'AV1' in c:
+        return 'AV1'
+    if 'HEVC' in c or 'H265' in c or 'V_MPEGH' in c or 'X265' in c:
+        return 'x265'
+    if 'AVC' in c or 'H264' in c or 'V_MPEG4' in c or 'X264' in c:
+        return 'x264'
+    if 'VP9' in c:
+        return 'VP9'
+    if 'MPEG2' in c:
+        return 'MPEG2'
+    return codec_name or ''
+
+
+# ============================================================================
+# METADATA PROVIDERS — TVDB v4, TMDB, TVmaze (fallback chain)
+# ============================================================================
+
+def _http_get_json(url, headers=None, timeout=12):
+    """GET a URL and return parsed JSON, or None on failure."""
+    try:
+        req = urllib.request.Request(url, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        logger.debug(f"HTTP GET failed [{url}]: {e}")
+        return None
+
+
+def _http_post_json(url, payload, headers=None, timeout=12):
+    """POST JSON to a URL and return parsed JSON, or None on failure."""
+    try:
+        data = json.dumps(payload).encode('utf-8')
+        h = {'Content-Type': 'application/json'}
+        if headers:
+            h.update(headers)
+        req = urllib.request.Request(url, data=data, headers=h, method='POST')
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        logger.debug(f"HTTP POST failed [{url}]: {e}")
+        return None
+
+
+class TVDBProvider:
+    """TheTVDB v4 API client. Requires API key. Series + movies."""
+    BASE = "https://api4.thetvdb.com/v4"
+
+    def __init__(self, api_key, lang='fra'):
+        self.api_key = api_key
+        self.lang = lang
+        self.token = None
+
+    def _login(self):
+        if self.token:
+            return True
+        data = _http_post_json(f"{self.BASE}/login", {"apikey": self.api_key})
+        if data and data.get("status") == "success":
+            self.token = data["data"]["token"]
+            return True
+        return False
+
+    def _headers(self):
+        return {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+
+    def search_series(self, title):
+        """Return list of {id, name, year} for series matching title."""
+        if not self._login():
+            return []
+        q = urllib.parse.quote(title)
+        url = f"{self.BASE}/search?query={q}&type=series"
+        data = _http_get_json(url, self._headers())
+        if not data or "data" not in data:
+            return []
+        out = []
+        for item in data["data"][:8]:
+            out.append({
+                'id': item.get("tvdb_id") or item.get("id"),
+                'name': item.get("translations", {}).get(self.lang) or item.get("name", ""),
+                'year': item.get("year", ""),
+                'provider': 'TVDB',
+            })
+        return out
+
+    def get_episode_name(self, series_id, season, episode):
+        """Return localized episode name for a series/season/episode."""
+        if not self._login():
+            return None
+        sid = str(series_id).replace("series-", "")
+        url = (f"{self.BASE}/series/{sid}/episodes/default/{self.lang}"
+               f"?season={season}&episodeNumber={episode}")
+        data = _http_get_json(url, self._headers())
+        try:
+            eps = data["data"]["episodes"]
+            for ep in eps:
+                if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                    return ep.get("name")
+        except Exception:
+            pass
+        # Fallback: extended translations
+        return None
+
+    def get_series_name(self, series_id):
+        if not self._login():
+            return None
+        sid = str(series_id).replace("series-", "")
+        data = _http_get_json(f"{self.BASE}/series/{sid}/translations/{self.lang}",
+                              self._headers())
+        try:
+            return data["data"]["name"]
+        except Exception:
+            return None
+
+    def get_episode_meta(self, series_id, season, episode):
+        """Return {name, description, still_url, aired, episode_id} for an episode."""
+        if not self._login():
+            return {}
+        sid = str(series_id).replace("series-", "")
+        url = (f"{self.BASE}/series/{sid}/episodes/default/{self.lang}"
+               f"?season={season}&episodeNumber={episode}")
+        data = _http_get_json(url, self._headers())
+        try:
+            for ep in data["data"]["episodes"]:
+                if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                    return {
+                        'name': ep.get("name", ""),
+                        'description': ep.get("overview", ""),
+                        'still_url': ep.get("image", ""),
+                        'aired': ep.get("aired", ""),
+                        'episode_id': ep.get("id"),
+                    }
+        except Exception:
+            pass
+        return {}
+
+    def get_series_meta(self, series_id):
+        """Return {genres, content_rating, imdb_id, cast} for a series."""
+        if not self._login():
+            return {}
+        sid = str(series_id).replace("series-", "")
+        data = _http_get_json(f"{self.BASE}/series/{sid}/extended", self._headers())
+        result = {}
+        try:
+            d = data["data"]
+            result['genres'] = [g.get("name", "") for g in d.get("genres", []) if g.get("name")]
+            ratings = d.get("contentRatings", [])
+            if ratings:
+                result['content_rating'] = ratings[0].get("name", "")
+            for rid in d.get("remoteIds", []):
+                if rid.get("type") == 2 or "imdb" in rid.get("sourceName", "").lower():
+                    result['imdb_id'] = rid.get("id", "")
+                    break
+            # Series-level cast as fallback
+            series_cast = []
+            for c in d.get("characters", [])[:15]:
+                name = c.get("personName", "")
+                role = c.get("name", "")
+                if name:
+                    series_cast.append({'name': name, 'role': role})
+            if series_cast:
+                result['cast'] = series_cast
+        except Exception:
+            pass
+        return result
+
+    def get_episode_extended(self, episode_id):
+        """Return {cast: [{name, role}]} from extended episode data."""
+        if not self._login() or not episode_id:
+            return {}
+        data = _http_get_json(f"{self.BASE}/episodes/{episode_id}/extended", self._headers())
+        result = {}
+        try:
+            d = data["data"]
+            cast = []
+            for c in d.get("characters", [])[:15]:
+                name = c.get("personName", "")
+                role = c.get("name", "")
+                if name:
+                    cast.append({'name': name, 'role': role})
+            result['cast'] = cast
+        except Exception:
+            pass
+        return result
+
+    def get_series_poster(self, series_id):
+        """Return poster image URL for a series."""
+        if not self._login():
+            return ""
+        sid = str(series_id).replace("series-", "")
+        data = _http_get_json(f"{self.BASE}/series/{sid}", self._headers())
+        try:
+            return data["data"].get("image", "")
+        except Exception:
+            return ""
+
+
+class TMDBProvider:
+    """TMDB API client. Requires API key. Series + movies."""
+    BASE = "https://api.themoviedb.org/3"
+
+    def __init__(self, api_key, lang='fr-FR'):
+        self.api_key = api_key
+        self.lang = lang
+
+    def search_series(self, title):
+        q = urllib.parse.quote(title)
+        url = f"{self.BASE}/search/tv?api_key={self.api_key}&language={self.lang}&query={q}"
+        data = _http_get_json(url)
+        if not data or "results" not in data:
+            return []
+        out = []
+        for item in data["results"][:8]:
+            date = item.get("first_air_date", "")
+            out.append({
+                'id': item.get("id"),
+                'name': item.get("name", ""),
+                'year': date[:4] if date else "",
+                'provider': 'TMDB',
+            })
+        return out
+
+    def search_movie(self, title, year=None):
+        q = urllib.parse.quote(title)
+        url = f"{self.BASE}/search/movie?api_key={self.api_key}&language={self.lang}&query={q}"
+        if year:
+            url += f"&year={year}"
+        data = _http_get_json(url)
+        if not data or "results" not in data:
+            return []
+        out = []
+        for item in data["results"][:8]:
+            date = item.get("release_date", "")
+            out.append({
+                'id': item.get("id"),
+                'name': item.get("title", ""),
+                'year': date[:4] if date else "",
+                'provider': 'TMDB',
+            })
+        return out
+
+    def get_episode_name(self, series_id, season, episode):
+        url = (f"{self.BASE}/tv/{series_id}/season/{season}/episode/{episode}"
+               f"?api_key={self.api_key}&language={self.lang}")
+        data = _http_get_json(url)
+        if data:
+            return data.get("name")
+        return None
+
+    def get_episode_meta(self, series_id, season, episode):
+        """Return {name, description, still_url, aired} for an episode."""
+        url = (f"{self.BASE}/tv/{series_id}/season/{season}/episode/{episode}"
+               f"?api_key={self.api_key}&language={self.lang}")
+        data = _http_get_json(url)
+        if data:
+            still = data.get("still_path", "")
+            return {
+                'name': data.get("name", ""),
+                'description': data.get("overview", ""),
+                'still_url': f"https://image.tmdb.org/t/p/original{still}" if still else "",
+                'aired': data.get("air_date", ""),
+            }
+        return {}
+
+    def get_episode_cast(self, series_id, season, episode):
+        """Return [{name, role}] for an episode's cast + directors/writers in crew.
+        Falls back to series-level created_by + studios when episode crew is empty (common for anime).
+        """
+        url = (f"{self.BASE}/tv/{series_id}/season/{season}/episode/{episode}"
+               f"/credits?api_key={self.api_key}")
+        data = _http_get_json(url) or {}
+        cast = [{'name': a.get('name', ''), 'role': a.get('character', '')}
+                for a in data.get('cast', [])[:15] if a.get('name')]
+        # Extract directors, writers, producers from episode crew
+        directors, writers, producers = [], [], []
+        for c in data.get('crew', []):
+            dept = c.get('department', '')
+            job = c.get('job', '')
+            name = c.get('name', '')
+            if not name:
+                continue
+            if dept == 'Directing':
+                directors.append(name)
+            elif dept == 'Writing':
+                writers.append(name)
+            elif dept == 'Production' or 'Producer' in job:
+                producers.append(name)
+        # Fallback: aggregate_credits (all-episode crew) for real producer persons
+        studios = []
+        if not directors and not producers:
+            agg = _http_get_json(f"{self.BASE}/tv/{series_id}/aggregate_credits"
+                                 f"?api_key={self.api_key}&language={self.lang}") or {}
+            for c in agg.get('crew', []):
+                name = c.get('name', '')
+                if not name:
+                    continue
+                jobs = c.get('jobs', [])
+                job_names = [j.get('job', '') for j in jobs] if jobs else [c.get('job', '')]
+                dept = c.get('department', '')
+                if dept == 'Directing' or 'Director' in job_names:
+                    directors.append(name)
+                elif dept == 'Writing':
+                    writers.append(name)
+                elif dept == 'Production' or any('Producer' in j for j in job_names):
+                    producers.append(name)
+            # Studios from created_by / production_companies
+            sdata = _http_get_json(f"{self.BASE}/tv/{series_id}"
+                                   f"?api_key={self.api_key}&language={self.lang}") or {}
+            if not directors:
+                for cb in sdata.get('created_by', []):
+                    if cb.get('name'):
+                        directors.append(cb['name'])
+            for comp in sdata.get('production_companies', []):
+                if comp.get('name'):
+                    studios.append(comp['name'])
+        # Dedupe preserving order
+        def _dedup(lst):
+            seen, out = set(), []
+            for x in lst:
+                if x not in seen:
+                    seen.add(x); out.append(x)
+            return out
+        directors, writers, producers, studios = (
+            _dedup(directors), _dedup(writers), _dedup(producers), _dedup(studios))
+        if directors:
+            cast.insert(0, {'name': ', '.join(directors[:5]), 'role': '__director__'})
+        if writers:
+            cast.insert(1, {'name': ', '.join(writers[:5]), 'role': '__writer__'})
+        if producers:
+            cast.insert(2, {'name': ', '.join(producers[:8]), 'role': '__producer__'})
+        if studios:
+            cast.insert(3, {'name': ', '.join(studios[:5]), 'role': '__studio__'})
+        return cast
+
+    def get_series_meta(self, series_id):
+        """Return {genres, content_rating, imdb_id, poster_url} for a series."""
+        result = {}
+        # Basic info + genres
+        url = f"{self.BASE}/tv/{series_id}?api_key={self.api_key}&language={self.lang}"
+        data = _http_get_json(url)
+        if data:
+            result['genres'] = [g['name'] for g in data.get('genres', []) if g.get('name')]
+            poster = data.get("poster_path", "")
+            if poster:
+                result['poster_url'] = f"https://image.tmdb.org/t/p/original{poster}"
+        # Content rating
+        url2 = f"{self.BASE}/tv/{series_id}/content_ratings?api_key={self.api_key}"
+        data2 = _http_get_json(url2)
+        if data2:
+            for r in data2.get('results', []):
+                if r.get('iso_3166_1') in ('FR', 'US'):
+                    result['content_rating'] = r.get('rating', '')
+                    break
+            if not result.get('content_rating') and data2.get('results'):
+                result['content_rating'] = data2['results'][0].get('rating', '')
+        # IMDB ID
+        url3 = f"{self.BASE}/tv/{series_id}/external_ids?api_key={self.api_key}"
+        data3 = _http_get_json(url3)
+        if data3:
+            result['imdb_id'] = data3.get('imdb_id', '')
+        return result
+
+    def get_series_poster(self, series_id):
+        """Return poster URL for a series."""
+        url = f"{self.BASE}/tv/{series_id}?api_key={self.api_key}"
+        data = _http_get_json(url)
+        if data:
+            poster = data.get("poster_path", "")
+            if poster:
+                return f"https://image.tmdb.org/t/p/original{poster}"
+        return ""
+
+    def get_movie_meta(self, movie_id):
+        """Return {name, description, poster_url, genres, imdb_id, content_rating} for a movie."""
+        url = f"{self.BASE}/movie/{movie_id}?api_key={self.api_key}&language={self.lang}"
+        data = _http_get_json(url)
+        if not data:
+            return {}
+        poster = data.get("poster_path", "")
+        result = {
+            'name': data.get("title", ""),
+            'description': data.get("overview", ""),
+            'poster_url': f"https://image.tmdb.org/t/p/original{poster}" if poster else "",
+            'genres': [g['name'] for g in data.get('genres', []) if g.get('name')],
+            'aired': data.get("release_date", ""),
+        }
+        # IMDB ID
+        url2 = f"{self.BASE}/movie/{movie_id}/external_ids?api_key={self.api_key}"
+        data2 = _http_get_json(url2)
+        if data2:
+            result['imdb_id'] = data2.get('imdb_id', '')
+        return result
+
+
+class TVmazeProvider:
+    """TVmaze API client. No key required. Series only."""
+    BASE = "https://api.tvmaze.com"
+
+    def search_series(self, title):
+        q = urllib.parse.quote(title)
+        data = _http_get_json(f"{self.BASE}/search/shows?q={q}")
+        if not data:
+            return []
+        out = []
+        for item in data[:8]:
+            show = item.get("show", {})
+            premiered = show.get("premiered", "")
+            out.append({
+                'id': show.get("id"),
+                'name': show.get("name", ""),
+                'year': premiered[:4] if premiered else "",
+                'provider': 'TVmaze',
+            })
+        return out
+
+    def get_episode_name(self, series_id, season, episode):
+        url = f"{self.BASE}/shows/{series_id}/episodebynumber?season={season}&number={episode}"
+        data = _http_get_json(url)
+        if data:
+            return data.get("name")
+        return None
+
+    def get_episode_meta(self, series_id, season, episode):
+        """Return {name, description, still_url, aired} for an episode."""
+        url = f"{self.BASE}/shows/{series_id}/episodebynumber?season={season}&number={episode}"
+        data = _http_get_json(url)
+        if data:
+            img = data.get("image") or {}
+            summary = data.get("summary", "")
+            summary = re.sub(r'<[^>]+>', '', summary).strip()
+            return {
+                'name': data.get("name", ""),
+                'description': summary,
+                'still_url': img.get("original", "") if isinstance(img, dict) else "",
+                'aired': data.get("airdate", ""),
+            }
+        return {}
+
+    def get_series_meta(self, series_id):
+        """Return {genres, content_rating} for a series."""
+        data = _http_get_json(f"{self.BASE}/shows/{series_id}")
+        if data:
+            rating = data.get('rating', {})
+            return {
+                'genres': data.get('genres', []),
+                'content_rating': str(rating.get('average', '')) if rating.get('average') else '',
+            }
+        return {}
+
+    def get_episode_cast(self, series_id, season=None, episode=None):
+        """Return [{name, role}] for a series' cast."""
+        data = _http_get_json(f"{self.BASE}/shows/{series_id}/cast")
+        if data:
+            return [{'name': c['person']['name'], 'role': c['character']['name']}
+                    for c in data[:15]
+                    if c.get('person') and c.get('character')]
+        return []
+
+
+class MetadataResolver:
+    """Tries providers in order: TVDB → TMDB → TVmaze."""
+
+    def __init__(self, tvdb_key='', tmdb_key='', lang_tvdb='fra', lang_tmdb='fr-FR', include_tvmaze=True):
+        self.providers = []
+        if tvdb_key:
+            self.providers.append(('TVDB', TVDBProvider(tvdb_key, lang_tvdb)))
+        if tmdb_key:
+            self.providers.append(('TMDB', TMDBProvider(tmdb_key, lang_tmdb)))
+        if include_tvmaze:
+            self.providers.append(('TVmaze', TVmazeProvider()))
+
+    def search_series(self, title):
+        """Return combined search results from first provider that responds."""
+        for name, prov in self.providers:
+            try:
+                results = prov.search_series(title)
+                if results:
+                    return results
+            except Exception as e:
+                logger.debug(f"{name} search_series failed: {e}")
+        return []
+
+    def search_movie(self, title, year=None):
+        for name, prov in self.providers:
+            if not hasattr(prov, 'search_movie'):
+                continue
+            try:
+                results = prov.search_movie(title, year)
+                if results:
+                    return results
+            except Exception as e:
+                logger.debug(f"{name} search_movie failed: {e}")
+        return []
+
+    def resolve_episode(self, provider_name, series_id, season, episode):
+        """Get episode name from a specific provider."""
+        for name, prov in self.providers:
+            if name == provider_name and hasattr(prov, 'get_episode_name'):
+                try:
+                    return prov.get_episode_name(series_id, season, episode)
+                except Exception as e:
+                    logger.debug(f"{name} resolve_episode failed: {e}")
+        return None
+
+    def resolve_full_episode(self, provider_name, series_id, season, episode):
+        """Get rich episode meta: name, description, aired, cast, genres, IMDB, rating, poster."""
+        meta = {}
+        for name, prov in self.providers:
+            if name == provider_name:
+                # Episode base info
+                if hasattr(prov, 'get_episode_meta'):
+                    try:
+                        meta = prov.get_episode_meta(series_id, season, episode)
+                    except Exception as e:
+                        logger.debug(f"{name} get_episode_meta: {e}")
+                # Series meta (genres, content rating, IMDB)
+                if hasattr(prov, 'get_series_meta'):
+                    try:
+                        s_meta = prov.get_series_meta(series_id)
+                        for k, v in s_meta.items():
+                            if v and not meta.get(k):
+                                meta[k] = v
+                    except Exception as e:
+                        logger.debug(f"{name} get_series_meta: {e}")
+                # Episode cast (TVDB: via episode_id, others: direct)
+                ep_id = meta.get('episode_id')
+                if ep_id and hasattr(prov, 'get_episode_extended'):
+                    try:
+                        ext = prov.get_episode_extended(ep_id)
+                        if ext.get('cast'):
+                            meta['cast'] = ext['cast']
+                    except Exception as e:
+                        logger.debug(f"{name} get_episode_extended: {e}")
+                elif hasattr(prov, 'get_episode_cast'):
+                    try:
+                        meta['cast'] = prov.get_episode_cast(series_id, season, episode)
+                    except Exception as e:
+                        logger.debug(f"{name} get_episode_cast: {e}")
+                # Series poster
+                if hasattr(prov, 'get_series_poster'):
+                    try:
+                        meta['poster_url'] = prov.get_series_poster(series_id)
+                    except Exception as e:
+                        logger.debug(f"{name} get_series_poster: {e}")
+                break
+        return meta
+
+    def resolve_movie_meta(self, provider_name, movie_id):
+        """Get full movie meta {name, description, poster_url} from provider."""
+        for name, prov in self.providers:
+            if name == provider_name and hasattr(prov, 'get_movie_meta'):
+                try:
+                    return prov.get_movie_meta(movie_id)
+                except Exception as e:
+                    logger.debug(f"{name} get_movie_meta failed: {e}")
+        return {}
+
+
+def build_output_filename(parsed, chosen, meta, ext='.mkv'):
+    """Build the final filename from parsed info + chosen show + video metadata.
+
+    Series: 'Title - S01E07 - Episode Name.mkv'
+    Movie:  'Title (Year) 1080p x265 Dolby Vision.mkv'
+    """
+    def _sanitize_fname(s):
+        # Remove characters illegal in Windows filenames
+        return re.sub(r'[<>:"/\\|?*]', '', s).strip()
+
+    if parsed['kind'] == 'series':
+        title = _sanitize_fname(chosen.get('name', parsed['title']))
+        s = parsed['season'] or 1
+        e = parsed['episode'] or 1
+        ep_marker = f"S{s:02d}E{e:02d}"
+        if parsed.get('episode_end'):
+            ep_marker += f"-E{parsed['episode_end']:02d}"
+        ep_name = _sanitize_fname(chosen.get('episode_name', ''))
+        if ep_name:
+            return f"{title} - {ep_marker} - {ep_name}{ext}"
+        return f"{title} - {ep_marker}{ext}"
+    else:
+        title = _sanitize_fname(chosen.get('name', parsed['title']))
+        year = chosen.get('year') or parsed.get('year') or ''
+        parts = [title]
+        if year:
+            parts.append(f"({year})")
+        # Append metadata tags
+        if meta.get('resolution'):
+            parts.append(meta['resolution'])
+        if meta.get('codec'):
+            parts.append(meta['codec'])
+        if meta.get('hdr'):
+            parts.append(meta['hdr'])
+        return " ".join(parts) + ext
 
 
 # ============================================================================
@@ -2291,6 +3134,1526 @@ class MediaInfoTab(ttk.Frame):
 
 
 # ============================================================================
+# METADATA PICKER DIALOG — choose cover/description source per provider
+# ============================================================================
+
+class MetadataPickerDialog(tk.Toplevel):
+    """Modal dialog: choose cover art, short description, long synopsis per provider.
+    Works on one file (selected in rename_tree) with 'apply to all' option.
+    """
+
+    IMG_W, IMG_H = 140, 200   # thumbnail display size
+
+    def __init__(self, parent, filepath, file_results, settings, lang_tvdb, lang_tmdb,
+                 batch_pro_tab=None):
+        super().__init__(parent)
+        self.title(T('bp_picker_title'))
+        # Restore saved size (WxH only), always center on screen
+        saved_size = settings.get('bp_picker_geometry', '1200x740') if settings else '1200x740'
+        try:
+            size_part = saved_size.split('+')[0]  # strip position if present
+            pw, ph = map(int, size_part.split('x'))
+        except Exception:
+            pw, ph = 1200, 740
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        px = (sw - pw) // 2
+        py = max(0, (sh - ph) // 2)
+        self.geometry(f"{pw}x{ph}+{px}+{py}")
+        self.minsize(800, 500)
+        self.resizable(True, True)
+        self.transient(parent)
+        self.grab_set()
+
+        self.filepath = filepath
+        self.file_results = file_results
+        self.settings = settings
+        self.lang_tvdb = lang_tvdb
+        self.lang_tmdb = lang_tmdb
+        self.batch_pro_tab = batch_pro_tab
+        self.protocol("WM_DELETE_WINDOW", self._on_window_close)
+
+        # Data fetched per provider: {pname: {name, description, poster_url, still_url}}
+        self.provider_meta = {}
+        self.provider_images = {}   # pname -> PhotoImage (keep reference!)
+
+        # Selection variables — restore saved choices if available
+        saved_prefs = settings.get('bp_picker_prefs', {}) if settings else {}
+        self.cover_var = tk.StringVar(value=saved_prefs.get('cover_src', ''))
+        self.desc_var = tk.StringVar(value=saved_prefs.get('desc_src', ''))
+        self.synopsis_var = tk.StringVar(value=saved_prefs.get('synopsis_src', ''))
+        self.cast_src_var = tk.StringVar(value=saved_prefs.get('cast_src', ''))
+        self.genre_src_var = tk.StringVar(value=saved_prefs.get('genre_src', ''))
+        self.crew_src_var = tk.StringVar(value=saved_prefs.get('crew_src', ''))
+        self.apply_all_var = tk.BooleanVar(value=False)
+
+        self._build_ui()
+        threading.Thread(target=self._fetch_all_meta, daemon=True).start()
+
+    def _build_ui(self):
+        fname = os.path.basename(self.filepath)
+        tk.Label(self, text=fname, font=("Arial", 9, "italic"),
+                 fg='gray', wraplength=1150).pack(padx=10, pady=(6, 2))
+
+        # Provider columns — direct frame, dialog wide enough for 3 columns
+        self.cols_frame = tk.Frame(self)
+        self.cols_frame.pack(fill='both', expand=True, padx=8, pady=4)
+
+        self.loading_lbl = tk.Label(self.cols_frame, text=T('bp_picker_loading'),
+                                    fg='gray', font=("Arial", 11))
+        self.loading_lbl.pack(pady=30)
+
+        # Bottom controls
+        bot = tk.Frame(self)
+        bot.pack(fill='x', padx=10, pady=6)
+        ttk.Checkbutton(bot, text=T('bp_picker_apply_all'),
+                        variable=self.apply_all_var).pack(side='left', padx=5)
+        tk.Button(bot, text="OK", command=self._on_ok,
+                  bg='#28a745', fg='white', width=10).pack(side='right', padx=5)
+        tk.Button(bot, text="Annuler", command=self.destroy,
+                  bg='#dc3545', fg='white', width=10).pack(side='right', padx=5)
+
+    def _fetch_all_meta(self):
+        """Fetch meta from each provider that has a match."""
+        res = self.file_results.get(self.filepath, {})
+        parsed = res.get('parsed', {})
+        all_pr = res.get('all_provider_results', {})
+
+        tvdb_key = self.settings.get('tvdb_api_key', '')
+        tmdb_key = self.settings.get('tmdb_api_key', '')
+
+        for pname, match in all_pr.items():
+            sid = match.get('id')
+            if not sid:
+                continue
+            meta = {}
+            try:
+                if pname == 'TVDB' and tvdb_key:
+                    prov = TVDBProvider(tvdb_key, self.lang_tvdb)
+                    if parsed.get('kind') == 'series':
+                        meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
+                        meta['poster_url'] = prov.get_series_poster(sid)
+                    meta['series_name'] = match.get('name', '')
+                elif pname == 'TMDB' and tmdb_key:
+                    prov = TMDBProvider(tmdb_key, self.lang_tmdb)
+                    if parsed.get('kind') == 'series':
+                        meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
+                        meta['poster_url'] = prov.get_series_poster(sid)
+                    else:
+                        meta = prov.get_movie_meta(sid)
+                    meta['series_name'] = match.get('name', '')
+                elif pname == 'TVmaze':
+                    prov = TVmazeProvider()
+                    if parsed.get('kind') == 'series':
+                        meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
+                    meta['series_name'] = match.get('name', '')
+            except Exception as e:
+                logger.debug(f"Picker fetch {pname}: {e}")
+                meta = {}
+
+            if meta:
+                # Also fetch series meta (genres, rating, IMDB)
+                if prov and hasattr(prov, 'get_series_meta'):
+                    try:
+                        s_meta = prov.get_series_meta(sid)
+                        for k, v in s_meta.items():
+                            if v and not meta.get(k):
+                                meta[k] = v
+                    except Exception as e:
+                        logger.debug(f"Picker series_meta {pname}: {e}")
+                # Fetch cast (episode-level first, then series-level)
+                ep_id = meta.get('episode_id')
+                if ep_id and prov and hasattr(prov, 'get_episode_extended'):
+                    try:
+                        ext = prov.get_episode_extended(ep_id)
+                        if ext.get('cast'):
+                            meta['cast'] = ext['cast']
+                    except Exception as e:
+                        logger.debug(f"Picker ep_extended {pname}: {e}")
+                if not meta.get('cast') and prov and hasattr(prov, 'get_episode_cast'):
+                    try:
+                        meta['cast'] = prov.get_episode_cast(
+                            sid, parsed.get('season', 1), parsed.get('episode', 1))
+                    except Exception as e:
+                        logger.debug(f"Picker ep_cast {pname}: {e}")
+                self.provider_meta[pname] = meta
+
+        self.after(0, self._render_columns)
+
+    def _render_columns(self):
+        """Build provider columns with image + description choices."""
+        self.loading_lbl.destroy()
+
+        if not self.provider_meta:
+            tk.Label(self.cols_frame,
+                     text="Aucune donnée disponible (vérifiez vos clés API)",
+                     fg='red').pack(pady=20)
+            return
+
+        providers = list(self.provider_meta.keys())
+        # Resize dialog width to fit number of columns (min 400px per col)
+        n = len(providers)
+        needed_w = max(800, n * 400)
+        cur_geo = self.geometry()
+        try:
+            cur_w, rest = cur_geo.split('x', 1)
+            cur_h = rest.split('+')[0]
+            if int(cur_w) < needed_w:
+                self.geometry(f"{needed_w}x{cur_h}")
+        except Exception:
+            pass
+
+        for pname in providers:
+            meta = self.provider_meta[pname]
+            col = tk.LabelFrame(self.cols_frame, text=f"  {pname}  ",
+                                font=("Arial", 10, "bold"), padx=6, pady=4)
+            col.pack(side='left', fill='both', expand=True, padx=4)
+
+            # Image area
+            img_frame = tk.Frame(col, width=self.IMG_W + 4, height=self.IMG_H + 4,
+                                 relief='sunken', bd=1)
+            img_frame.pack(pady=(4, 0))
+            img_frame.pack_propagate(False)
+            img_lbl = tk.Label(img_frame, text="⏳", fg='gray')
+            img_lbl.pack(expand=True)
+
+            dim_lbl = tk.Label(col, text="", fg='gray', font=("Arial", 7))
+            dim_lbl.pack()
+
+            cover_url = meta.get('poster_url') or meta.get('still_url', '')
+            if cover_url:
+                threading.Thread(
+                    target=self._load_image,
+                    args=(pname, cover_url, img_lbl, dim_lbl),
+                    daemon=True
+                ).start()
+
+            # Cover radio
+            r_cover = ttk.Radiobutton(col, text=T('bp_picker_cover'),
+                                      variable=self.cover_var, value=pname)
+            r_cover.pack(anchor='w')
+
+            # Description
+            desc = meta.get('description', '')
+            tk.Label(col, text=T('bp_picker_desc') + ":",
+                     font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
+            desc_box = tk.Text(col, height=3, wrap='word', font=("Arial", 8),
+                               relief='flat', bg='#f8f8f8')
+            desc_box.insert('1.0', desc)
+            desc_box.config(state='disabled')
+            desc_box.pack(fill='x', pady=2)
+            ttk.Radiobutton(col, text="Utiliser cette description",
+                            variable=self.desc_var, value=pname).pack(anchor='w')
+
+            # Long synopsis — use description if provider has only one field
+            # TVDB/TMDB both expose overview as description; use same or leave empty
+            tk.Label(col, text=T('bp_picker_synopsis') + ":",
+                     font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
+            syn_box = tk.Text(col, height=5, wrap='word', font=("Arial", 8),
+                              relief='flat', bg='#f8f8f8')
+            syn_box.insert('1.0', desc)   # same field — user can edit after if needed
+            syn_box.config(state='disabled')
+            syn_box.pack(fill='x', pady=2)
+            ttk.Radiobutton(col, text="Utiliser ce synopsis",
+                            variable=self.synopsis_var, value=pname).pack(anchor='w')
+
+            # Cast / Artist
+            full_cast = meta.get('cast', [])
+            crew_markers = ('__director__', '__writer__', '__producer__', '__studio__')
+            actors = [a for a in full_cast if a.get('role') not in crew_markers]
+            directors = [a['name'] for a in full_cast if a.get('role') == '__director__']
+            writers = [a['name'] for a in full_cast if a.get('role') == '__writer__']
+            producers = [a['name'] for a in full_cast if a.get('role') == '__producer__']
+            studios = [a['name'] for a in full_cast if a.get('role') == '__studio__']
+
+            if actors:
+                tk.Label(col, text=T('bp_picker_cast') + ":",
+                         font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
+                cast_text = ", ".join(a['name'] for a in actors[:6] if a.get('name'))
+                if len(actors) > 6:
+                    cast_text += f" (+{len(actors)-6})"
+                tk.Label(col, text=cast_text, wraplength=360,
+                         font=("Arial", 8), fg='#333').pack(anchor='w', padx=4)
+                ttk.Radiobutton(col, text="Utiliser ce cast (Artiste/Interprète)",
+                                variable=self.cast_src_var, value=pname).pack(anchor='w')
+
+            # Crew (director / writer / producer / studio)
+            if directors or writers or producers or studios:
+                tk.Label(col, text="Réal. / Scénario / Producteur / Studio:",
+                         font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
+                crew_lines = []
+                if directors:
+                    crew_lines.append("Réal.: " + ", ".join(directors[:3]))
+                if writers:
+                    crew_lines.append("Scénar.: " + ", ".join(writers[:3]))
+                if producers:
+                    crew_lines.append("Prod.: " + ", ".join(producers[:4]))
+                if studios:
+                    crew_lines.append("Studio: " + ", ".join(studios[:3]))
+                tk.Label(col, text="\n".join(crew_lines), wraplength=360,
+                         font=("Arial", 8), fg='#333', justify='left').pack(anchor='w', padx=4)
+                ttk.Radiobutton(col, text="Utiliser ce crew (Réal./Prod./Studio)",
+                                variable=self.crew_src_var, value=pname).pack(anchor='w')
+            else:
+                tk.Label(col, text="(pas de crew — utiliser TMDB)",
+                         font=("Arial", 7, "italic"), fg='gray').pack(anchor='w', padx=4)
+
+            # Genres
+            genres = meta.get('genres', [])
+            if genres:
+                tk.Label(col, text=T('bp_picker_genres') + ":",
+                         font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
+                tk.Label(col, text=", ".join(genres),
+                         font=("Arial", 8), fg='#333', wraplength=360).pack(anchor='w', padx=4)
+                ttk.Radiobutton(col, text="Utiliser ces genres",
+                                variable=self.genre_src_var, value=pname).pack(anchor='w')
+
+            # Air date & content rating (info only)
+            info_parts = []
+            if meta.get('aired'):
+                info_parts.append(f"Date: {meta['aired']}")
+            if meta.get('content_rating'):
+                info_parts.append(f"Rating: {meta['content_rating']}")
+            if meta.get('imdb_id'):
+                info_parts.append(f"IMDB: {meta['imdb_id']}")
+            if info_parts:
+                tk.Label(col, text="  ".join(info_parts),
+                         font=("Arial", 7), fg='gray').pack(anchor='w', pady=(4, 0))
+
+        # Set defaults: use saved choice if provider available, else first provider
+        if providers:
+            for var in (self.cover_var, self.desc_var, self.synopsis_var,
+                        self.cast_src_var, self.genre_src_var):
+                if var.get() not in providers:
+                    var.set(providers[0])
+            # crew_src default = first provider that actually has crew (usually TMDB)
+            crew_providers = [p for p in providers
+                              if any(a.get('role') in ('__director__', '__writer__', '__producer__', '__studio__')
+                                     for a in self.provider_meta[p].get('cast', []))]
+            if self.crew_src_var.get() not in crew_providers:
+                self.crew_src_var.set(crew_providers[0] if crew_providers else providers[0])
+
+    def _load_image(self, pname, url, label, dim_lbl=None):
+        """Download and resize image, update label + show original dimensions."""
+        try:
+            import io
+            req = urllib.request.Request(url,
+                                         headers={'User-Agent': 'PyMkvPropEdit/3.7'})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+            img = Image.open(io.BytesIO(data))
+            orig_w, orig_h = img.size
+            img.thumbnail((self.IMG_W, self.IMG_H), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            self.provider_images[pname] = photo  # prevent GC
+            dim_text = f"{orig_w}×{orig_h}px"
+            self.after(0, lambda: label.config(image=photo, text=''))
+            if dim_lbl:
+                self.after(0, lambda: dim_lbl.config(text=dim_text))
+        except Exception as e:
+            logger.debug(f"Picker image load {pname}: {e}")
+            self.after(0, lambda: label.config(text="❌ img"))
+
+    def _save_picker_geometry(self):
+        """Persist picker size (WxH only, not position) to settings."""
+        try:
+            geo = self.geometry()
+            size = geo.split('+')[0]  # "1200x740" only, drop position
+            if self.settings is not None:
+                self.settings['bp_picker_geometry'] = size
+        except Exception:
+            pass
+
+    def _on_window_close(self):
+        self._save_picker_geometry()
+        self.destroy()
+
+    def _on_ok(self):
+        """Apply choices to file_results and close.
+
+        Single file: apply fetched content directly to chosen dict.
+        Apply-to-all: store SOURCE PREFS at batch_pro_tab level so each file
+        fetches its OWN episode-specific content at pipeline time.
+        """
+        cover_src = self.cover_var.get()
+        desc_src = self.desc_var.get()
+        syn_src = self.synopsis_var.get()
+        cast_src = self.cast_src_var.get()
+        genre_src = self.genre_src_var.get()
+        crew_src = self.crew_src_var.get()
+
+        crew_markers = ('__director__', '__writer__', '__producer__', '__studio__')
+
+        # Apply fetched content to the current file immediately
+        chosen = self.file_results.get(self.filepath, {}).get('chosen', {})
+        if cover_src and cover_src in self.provider_meta:
+            m = self.provider_meta[cover_src]
+            chosen['cover_url'] = m.get('poster_url') or m.get('still_url', '')
+        if desc_src and desc_src in self.provider_meta:
+            chosen['description'] = self.provider_meta[desc_src].get('description', '')
+        if syn_src and syn_src in self.provider_meta:
+            chosen['synopsis'] = self.provider_meta[syn_src].get('description', '')
+        # Merge actors (cast_src) + crew (crew_src) into a single cast list
+        merged_cast = []
+        if cast_src and cast_src in self.provider_meta:
+            merged_cast += [a for a in self.provider_meta[cast_src].get('cast', [])
+                            if a.get('role') not in crew_markers]
+        if crew_src and crew_src in self.provider_meta:
+            merged_cast += [a for a in self.provider_meta[crew_src].get('cast', [])
+                            if a.get('role') in crew_markers]
+        if merged_cast:
+            chosen['cast'] = merged_cast
+        if genre_src and genre_src in self.provider_meta:
+            chosen['genres'] = self.provider_meta[genre_src].get('genres', [])
+        if self.filepath in self.file_results:
+            self.file_results[self.filepath]['chosen'] = chosen
+
+        if self.apply_all_var.get() and self.batch_pro_tab is not None:
+            # Store SOURCE PREFS — pipeline will fetch per-episode content for each file
+            self.batch_pro_tab.meta_picker_prefs = {
+                'cover_src': cover_src,
+                'desc_src': desc_src,
+                'synopsis_src': syn_src,
+                'cast_src': cast_src,
+                'genre_src': genre_src,
+                'crew_src': crew_src,
+            }
+
+        # Persist radio button choices to settings
+        if self.settings is not None:
+            self.settings['bp_picker_prefs'] = {
+                'cover_src': cover_src, 'desc_src': desc_src,
+                'synopsis_src': syn_src, 'cast_src': cast_src,
+                'genre_src': genre_src, 'crew_src': crew_src,
+            }
+        self._save_picker_geometry()
+        self.destroy()
+
+
+# ============================================================================
+# BATCH PRO TAB — Auto-rename (TVDB/TMDB/TVmaze) + track reorder + sync pipeline
+# ============================================================================
+
+class BatchProTab(ttk.Frame, AudioSyncMixin):
+    def __init__(self, notebook, settings, parent_app):
+        super().__init__(notebook)
+        self.settings = settings
+        self.parent_app = parent_app
+        self.pack(fill='both', expand=True)
+        self.temp_files = []
+        self.file_results = {}     # filepath -> {parsed, meta, matches, chosen, newname, all_provider_results}
+        self.track_template = []   # list of {type, lang, forced}
+        self.meta_picker_prefs = {}   # source prefs from MetadataPickerDialog "apply to all"
+
+        # PanedWindow vertical — chaque section redimensionnable par l'utilisateur
+        paned = tk.PanedWindow(self, orient=tk.VERTICAL, sashrelief='flat',
+                               sashpad=0, sashwidth=4, bg='#999999')
+        paned.pack(fill='both', expand=True, padx=2, pady=2)
+        self.bp_paned = paned
+        self._pane_init_done = False
+        self.after(400, self._init_pane_sizes)
+
+        # ── SECTION 1: FILES ──────────────────────────────────────────
+        sec1 = tk.LabelFrame(paned, text=T('bp_step1'), font=("Arial", 10, "bold"),
+                             fg='#0066cc', padx=5, pady=3)
+
+        lb_frame = tk.Frame(sec1)
+        lb_frame.pack(fill='both', expand=True)
+        self.file_list = tk.Listbox(lb_frame, selectmode=tk.MULTIPLE, height=4)
+        self.file_list.pack(side='left', fill='both', expand=True)
+        sb1 = ttk.Scrollbar(lb_frame, orient='vertical', command=self.file_list.yview)
+        sb1.pack(side='right', fill='y')
+        self.file_list.configure(yscrollcommand=sb1.set)
+        if TkinterDnD is not None:
+            try:
+                self.file_list.drop_target_register(DND_FILES)
+                self.file_list.dnd_bind('<<Drop>>', self._drop_files)
+            except Exception:
+                pass
+
+        bf = tk.Frame(sec1)
+        bf.pack(fill='x', pady=2)
+        tk.Button(bf, text=T('btn_add_files'), command=self._add_files, bg='#ADD8E6').pack(side='left', padx=3)
+        tk.Button(bf, text=T('btn_add_folder'), command=self._add_folder, bg='#800080', fg='white').pack(side='left', padx=3)
+        tk.Button(bf, text=T('btn_remove'), command=self._remove_selected, bg='#FF4500', fg='white').pack(side='left', padx=3)
+        tk.Button(bf, text=T('btn_clear'), command=self._clear_files, bg='#FF0000', fg='white').pack(side='left', padx=3)
+
+        paned.add(sec1, minsize=80, height=115)
+
+        # ── SECTION 2: AUTO-RENAME ────────────────────────────────────
+        sec2 = tk.LabelFrame(paned, text=T('bp_step2'), font=("Arial", 10, "bold"),
+                             fg='#0066cc', padx=5, pady=3)
+
+        srow = tk.Frame(sec2)
+        srow.pack(fill='x', pady=1)
+        tk.Label(srow, text=T('bp_lang_search')).pack(side='left')
+        self.search_lang_var = tk.StringVar(value=settings.get('bp_search_lang', 'fr'))
+        ttk.Combobox(srow, textvariable=self.search_lang_var,
+                     values=['fr', 'en', 'ja', 'de', 'es', 'it'],
+                     width=5, state='readonly').pack(side='left', padx=5)
+        tk.Label(srow, text="API:").pack(side='left', padx=(8, 0))
+        self.bp_api_var = tk.StringVar(value=settings.get('bp_api_provider', 'Auto'))
+        ttk.Combobox(srow, textvariable=self.bp_api_var,
+                     values=['Auto', 'TVDB', 'TMDB', 'TVmaze'],
+                     width=8, state='readonly').pack(side='left', padx=5)
+        tk.Button(srow, text=T('bp_search_names'), command=self._search_names,
+                  bg='#17a2b8', fg='white', font=("Arial", 9, "bold")).pack(side='left', padx=8)
+        self.bp_picker_btn = tk.Button(srow, text="🎨 Illus./Desc.",
+                                       command=self._open_meta_picker,
+                                       bg='#9b59b6', fg='white',
+                                       font=("Arial", 9, "bold"))
+        self.bp_picker_btn.pack(side='left', padx=4)
+        self.bp_search_status = tk.Label(srow, text="", fg='gray', font=("Arial", 8, "italic"))
+        self.bp_search_status.pack(side='left', padx=5)
+
+        rt_frame = tk.Frame(sec2)
+        rt_frame.pack(fill='both', expand=True, pady=2)
+        cols = ('file', 'detected', 'newname', 'status')
+        self.rename_tree = ttk.Treeview(rt_frame, columns=cols, show='headings', height=4)
+        self.rename_tree.heading('file', text=T('bp_col_file'))
+        self.rename_tree.heading('detected', text=T('bp_col_detected'))
+        self.rename_tree.heading('newname', text=T('bp_col_newname'))
+        self.rename_tree.heading('status', text=T('bp_col_status'))
+        self.rename_tree.column('file', width=240)
+        self.rename_tree.column('detected', width=130)
+        self.rename_tree.column('newname', width=300)
+        self.rename_tree.column('status', width=100, anchor='center')
+        self.rename_tree.pack(side='left', fill='both', expand=True)
+        sb2 = ttk.Scrollbar(rt_frame, orient='vertical', command=self.rename_tree.yview)
+        sb2.pack(side='right', fill='y')
+        self.rename_tree.configure(yscrollcommand=sb2.set)
+        self.rename_tree.bind('<Double-1>', self._on_rename_edit)
+
+        meta_row = tk.Frame(sec2)
+        meta_row.pack(fill='x', pady=1)
+        self.bp_embed_meta_var = tk.BooleanVar(value=settings.get('bp_embed_meta', False))
+        ttk.Checkbutton(meta_row, text=T('bp_chk_embed_meta'),
+                        variable=self.bp_embed_meta_var).pack(side='left', padx=5)
+        self.bp_clean_tags_var = tk.BooleanVar(value=settings.get('bp_clean_tags', True))
+        ttk.Checkbutton(meta_row, text="Supprimer anciens tags/cover avant",
+                        variable=self.bp_clean_tags_var).pack(side='left', padx=8)
+        tk.Label(meta_row, text="(cliquer 🎨 pour choisir les sources)",
+                 fg='gray', font=("Arial", 8, "italic")).pack(side='left', padx=5)
+
+        paned.add(sec2, minsize=90, height=170)
+
+        # ── SECTION 3: TRACK ORDER ────────────────────────────────────
+        sec3 = tk.LabelFrame(paned, text=T('bp_step3'), font=("Arial", 10, "bold"),
+                             fg='#0066cc', padx=5, pady=3)
+
+        tk.Label(sec3, text=T('bp_reorder_hint'), fg='gray',
+                 font=("Arial", 8, "italic")).pack(anchor='w')
+
+        torow = tk.Frame(sec3)
+        torow.pack(fill='x', pady=1)
+        tk.Button(torow, text=T('bp_load_ref'), command=self._load_ref_tracks,
+                  bg='#e1e1e1').pack(side='left', padx=3)
+        tk.Button(torow, text=T('bp_load_first'), command=self._load_first_file_ref_tracks,
+                  bg='#90EE90').pack(side='left', padx=3)
+        tk.Button(torow, text=T('bp_track_up'), command=lambda: self._move_track(-1),
+                  bg='#FFC107').pack(side='left', padx=3)
+        tk.Button(torow, text=T('bp_track_down'), command=lambda: self._move_track(1),
+                  bg='#FFC107').pack(side='left', padx=3)
+
+        tt_frame = tk.Frame(sec3)
+        tt_frame.pack(fill='both', expand=True, pady=2)
+        tcols = ('track', 'type', 'lang', 'name', 'forced')
+        self.track_tree = ttk.Treeview(tt_frame, columns=tcols, show='headings', height=5)
+        self.track_tree.heading('track', text=T('bp_col_track'))
+        self.track_tree.heading('type', text=T('bp_col_type'))
+        self.track_tree.heading('lang', text=T('bp_col_lang'))
+        self.track_tree.heading('name', text=T('bp_col_name_tr'))
+        self.track_tree.heading('forced', text=T('bp_col_forced'))
+        self.track_tree.column('track', width=50, anchor='center')
+        self.track_tree.column('type', width=90, anchor='center')
+        self.track_tree.column('lang', width=70, anchor='center')
+        self.track_tree.column('name', width=300)
+        self.track_tree.column('forced', width=60, anchor='center')
+        self.track_tree.pack(side='left', fill='both', expand=True)
+        sb3 = ttk.Scrollbar(tt_frame, orient='vertical', command=self.track_tree.yview)
+        sb3.pack(side='right', fill='y')
+        self.track_tree.configure(yscrollcommand=sb3.set)
+
+        paned.add(sec3, minsize=90, height=155)
+
+        # ── SECTION 4: PIPELINE ───────────────────────────────────────
+        sec4 = tk.LabelFrame(paned, text=T('bp_step4'), font=("Arial", 10, "bold"),
+                             fg='#0066cc', padx=5, pady=3)
+        paned.add(sec4, minsize=130)
+
+        opts = tk.Frame(sec4)
+        opts.pack(fill='x', pady=1)
+        self.bp_sync_var = tk.BooleanVar(value=settings.get('bp_sync', True))
+        self.bp_sync_subs_var = tk.BooleanVar(value=settings.get('bp_sync_subs', True))
+        self.bp_props_var = tk.BooleanVar(value=settings.get('bp_props', True))
+        self.bp_reorder_var = tk.BooleanVar(value=settings.get('bp_reorder', False))
+        self.bp_rename_var = tk.BooleanVar(value=settings.get('bp_rename', True))
+        ttk.Checkbutton(opts, text=T('bp_chk_sync'), variable=self.bp_sync_var).pack(side='left', padx=6)
+        ttk.Checkbutton(opts, text="+ sous-titres", variable=self.bp_sync_subs_var).pack(side='left', padx=0)
+        ttk.Separator(opts, orient='vertical').pack(side='left', fill='y', padx=6)
+        ttk.Checkbutton(opts, text=T('bp_chk_props'), variable=self.bp_props_var).pack(side='left', padx=6)
+        ttk.Checkbutton(opts, text=T('bp_chk_reorder'), variable=self.bp_reorder_var).pack(side='left', padx=6)
+        ttk.Checkbutton(opts, text=T('bp_chk_rename'), variable=self.bp_rename_var).pack(side='left', padx=6)
+
+        srow2 = tk.Frame(sec4)
+        srow2.pack(fill='x', pady=1)
+        tk.Label(srow2, text=T('lbl_ref_lang')).pack(side='left')
+        self.bp_ref_lang_var = tk.StringVar(value=settings.get('bp_ref_lang', 'jpn'))
+        tk.Entry(srow2, textvariable=self.bp_ref_lang_var, width=5).pack(side='left', padx=5)
+        tk.Label(srow2, text=T('lbl_duration')).pack(side='left', padx=(10, 0))
+        self.bp_duration_var = tk.StringVar(value=settings.get('audio_sync_duration', "120"))
+        tk.Entry(srow2, textvariable=self.bp_duration_var, width=5).pack(side='left', padx=5)
+        tk.Label(srow2, text=T('lbl_batch_start')).pack(side='left', padx=(10, 0))
+        self.bp_start_var = tk.StringVar(value=settings.get('audio_sync_start', "300"))
+        tk.Entry(srow2, textvariable=self.bp_start_var, width=5).pack(side='left', padx=5)
+
+        out_row = tk.Frame(sec4)
+        out_row.pack(fill='x', pady=1)
+        self.bp_output_dir_var = tk.BooleanVar(value=settings.get('bp_output_dir', False))
+        ttk.Checkbutton(out_row, text="Dossier de sortie :",
+                        variable=self.bp_output_dir_var).pack(side='left')
+        self.bp_output_path_var = tk.StringVar(value=settings.get('bp_output_path', ''))
+        tk.Entry(out_row, textvariable=self.bp_output_path_var, width=30).pack(
+            side='left', padx=4, fill='x', expand=True)
+        tk.Button(out_row, text="📁", command=self._browse_output_dir,
+                  bg='#e1e1e1').pack(side='left', padx=2)
+        tk.Label(out_row, text="(vide = sous-dossier auto)",
+                 fg='gray', font=("Arial", 8, "italic")).pack(side='left', padx=4)
+
+        self.bp_run_btn = tk.Button(sec4, text=T('bp_run'), command=self._run_pipeline,
+                                    bg='#008000', fg='white', font=("Arial", 11, "bold"))
+        self.bp_run_btn.pack(fill='x', pady=4)
+
+        self.bp_progress = ttk.Progressbar(sec4, orient='horizontal', mode='determinate')
+        self.bp_progress.pack(fill='x', pady=1)
+
+        self.bp_status_lbl = tk.Label(sec4, text="", fg='#0066cc',
+                                      font=("Arial", 9, "bold"), anchor='w')
+        self.bp_status_lbl.pack(fill='x', pady=1)
+
+        self.bp_log = scrolledtext.ScrolledText(sec4, height=6)
+        self.bp_log.pack(fill='both', expand=True, pady=2)
+
+    # ---- File management ----
+    def _drop_files(self, event):
+        for f in self.winfo_toplevel().tk.splitlist(event.data):
+            if f.lower().endswith('.mkv'):
+                self.file_list.insert(tk.END, f)
+
+    def _add_files(self):
+        for f in filedialog.askopenfilenames(filetypes=[("MKV Files", "*.mkv")]):
+            self.file_list.insert(tk.END, f)
+
+    def _add_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            for f in glob.glob(os.path.join(folder, "**/*.mkv"), recursive=True):
+                self.file_list.insert(tk.END, f)
+
+    def _remove_selected(self):
+        for i in self.file_list.curselection()[::-1]:
+            self.file_list.delete(i)
+
+    def _clear_files(self):
+        self.file_list.delete(0, tk.END)
+        self.rename_tree.delete(*self.rename_tree.get_children())
+        self.file_results.clear()
+
+    def _bp_log(self, txt):
+        self.after(0, lambda: (self.bp_log.insert(tk.END, txt + "\n"), self.bp_log.see(tk.END)))
+
+    # ---- PanedWindow size persistence ----
+    def _init_pane_sizes(self):
+        """Set initial pane heights (as proportions of total) after window renders."""
+        if self._pane_init_done:
+            return
+        total = self.bp_paned.winfo_height()
+        if total < 50:
+            # Not rendered yet, retry
+            self.after(200, self._init_pane_sizes)
+            return
+        saved = self.settings.get('bp_pane_sizes')
+        # Saved as proportions [0.0-1.0] of total height
+        if saved and len(saved) == 3 and all(0 < p < 1 for p in saved):
+            positions = [max(60, int(p * total)) for p in saved]
+        else:
+            # Defaults: sec1=15%, sec2=37%, sec3=57% of total
+            positions = [int(total * 0.15), int(total * 0.37), int(total * 0.57)]
+        try:
+            for i, y in enumerate(positions):
+                self.bp_paned.sash_place(i, 1, y)
+            self._pane_init_done = True
+        except Exception as e:
+            logger.debug(f"PanedWindow sash init: {e}")
+
+    def _get_pane_sizes(self):
+        """Return sash positions as proportions of total height (portable across window sizes)."""
+        try:
+            total = self.bp_paned.winfo_height()
+            if total < 50:
+                return None
+            return [self.bp_paned.sash_coord(i)[1] / total for i in range(3)]
+        except Exception:
+            return None
+
+    # ---- Meta picker ----
+    def _open_meta_picker(self):
+        """Open MetadataPickerDialog for the selected (or first) file."""
+        sel = self.rename_tree.selection()
+        fp = sel[0] if sel else (list(self.file_results.keys())[0] if self.file_results else None)
+        if not fp:
+            messagebox.showwarning("Batch Pro",
+                                   "Aucun résultat — lancez d'abord 🔍 Rechercher les noms.")
+            return
+        lang = self.search_lang_var.get()
+        lang_tvdb = {'fr': 'fra', 'en': 'eng', 'ja': 'jpn', 'de': 'deu',
+                     'es': 'spa', 'it': 'ita'}.get(lang, 'eng')
+        lang_tmdb = {'fr': 'fr-FR', 'en': 'en-US', 'ja': 'ja-JP', 'de': 'de-DE',
+                     'es': 'es-ES', 'it': 'it-IT'}.get(lang, 'en-US')
+        MetadataPickerDialog(self.winfo_toplevel(), fp,
+                             self.file_results, self.settings, lang_tvdb, lang_tmdb,
+                             batch_pro_tab=self)
+
+    # ---- Auto-rename ----
+    def _get_resolver(self):
+        tvdb = self.settings.get('tvdb_api_key', '')
+        tmdb = self.settings.get('tmdb_api_key', '')
+        lang = self.search_lang_var.get()
+        provider_choice = self.bp_api_var.get()
+        lang_tvdb = {'fr': 'fra', 'en': 'eng', 'ja': 'jpn', 'de': 'deu',
+                     'es': 'spa', 'it': 'ita'}.get(lang, 'eng')
+        lang_tmdb = {'fr': 'fr-FR', 'en': 'en-US', 'ja': 'ja-JP', 'de': 'de-DE',
+                     'es': 'es-ES', 'it': 'it-IT'}.get(lang, 'en-US')
+        if provider_choice == 'TVDB':
+            return MetadataResolver(tvdb, '', lang_tvdb, lang_tmdb, include_tvmaze=False)
+        elif provider_choice == 'TMDB':
+            return MetadataResolver('', tmdb, lang_tvdb, lang_tmdb, include_tvmaze=False)
+        elif provider_choice == 'TVmaze':
+            return MetadataResolver('', '', lang_tvdb, lang_tmdb, include_tvmaze=True)
+        else:  # Auto
+            return MetadataResolver(tvdb, tmdb, lang_tvdb, lang_tmdb, include_tvmaze=True)
+
+    def _search_names(self):
+        files = list(self.file_list.get(0, tk.END))
+        if not files:
+            messagebox.showwarning("Batch Pro", "Aucun fichier ajouté !")
+            return
+        if not self.settings.get('tvdb_api_key') and not self.settings.get('tmdb_api_key'):
+            self._bp_log(T('bp_no_apikey'))
+        self.bp_search_status.config(text=T('bp_searching'))
+        threading.Thread(target=self._search_names_worker, args=(files,), daemon=True).start()
+
+    def _search_names_worker(self, files):
+        resolver = self._get_resolver()
+        # Also build resolvers for each individual provider (for picker multi-source)
+        tvdb_key = self.settings.get('tvdb_api_key', '')
+        tmdb_key = self.settings.get('tmdb_api_key', '')
+        lang = self.search_lang_var.get()
+        lang_tvdb = {'fr': 'fra', 'en': 'eng', 'ja': 'jpn', 'de': 'deu',
+                     'es': 'spa', 'it': 'ita'}.get(lang, 'eng')
+        lang_tmdb = {'fr': 'fr-FR', 'en': 'en-US', 'ja': 'ja-JP', 'de': 'de-DE',
+                     'es': 'es-ES', 'it': 'it-IT'}.get(lang, 'en-US')
+        per_provider = {}
+        if tvdb_key:
+            per_provider['TVDB'] = MetadataResolver(tvdb_key, '', lang_tvdb, lang_tmdb, include_tvmaze=False)
+        if tmdb_key:
+            per_provider['TMDB'] = MetadataResolver('', tmdb_key, lang_tvdb, lang_tmdb, include_tvmaze=False)
+        per_provider['TVmaze'] = MetadataResolver('', '', lang_tvdb, lang_tmdb, include_tvmaze=True)
+
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get()
+        ffprobe = self.settings.get('ffprobe_path', find_ffprobe())
+
+        self.after(0, lambda: self.rename_tree.delete(*self.rename_tree.get_children()))
+        self.file_results.clear()
+
+        for f in files:
+            parsed = parse_media_filename(f)
+            meta = detect_video_metadata(f, mkvmerge, ffprobe)
+            chosen = {}
+            status = '?'
+            # Search each provider independently (for picker)
+            all_provider_results = {}
+            for pname, presolver in per_provider.items():
+                try:
+                    if parsed['kind'] == 'series':
+                        results = presolver.search_series(parsed['title'])
+                    else:
+                        results = presolver.search_movie(parsed['title'], parsed.get('year')) if any(
+                            hasattr(p, 'search_movie') for _, p in presolver.providers) else []
+                    if results:
+                        all_provider_results[pname] = results[0]
+                except Exception as e:
+                    logger.debug(f"Search {pname} failed: {e}")
+            try:
+                embed_meta = self.bp_embed_meta_var.get()
+                if parsed['kind'] == 'series':
+                    matches = resolver.search_series(parsed['title'])
+                    if matches:
+                        chosen = dict(matches[0])
+                        if embed_meta:
+                            ep_meta = resolver.resolve_full_episode(
+                                chosen['provider'], chosen['id'],
+                                parsed['season'], parsed['episode'])
+                            if ep_meta.get('name'):
+                                chosen['episode_name'] = ep_meta['name']
+                            chosen['description'] = ep_meta.get('description', '')
+                            chosen['cover_url'] = ep_meta.get('poster_url') or ep_meta.get('still_url', '')
+                            # Copy ALL enriched fields to chosen
+                            for _k in ('genres', 'cast', 'imdb_id', 'content_rating', 'aired'):
+                                if ep_meta.get(_k):
+                                    chosen[_k] = ep_meta[_k]
+                        else:
+                            ep_name = resolver.resolve_episode(
+                                chosen['provider'], chosen['id'],
+                                parsed['season'], parsed['episode'])
+                            if ep_name:
+                                chosen['episode_name'] = ep_name
+                        status = f"✓ {chosen.get('provider', '?')}"
+                else:
+                    matches = resolver.search_movie(parsed['title'], parsed.get('year'))
+                    if matches:
+                        chosen = dict(matches[0])
+                        if embed_meta:
+                            mv_meta = resolver.resolve_movie_meta(chosen['provider'], chosen['id'])
+                            chosen['description'] = mv_meta.get('description', '')
+                            chosen['cover_url'] = mv_meta.get('poster_url', '')
+                            for _k in ('genres', 'cast', 'imdb_id', 'content_rating', 'aired'):
+                                if mv_meta.get(_k):
+                                    chosen[_k] = mv_meta[_k]
+                        status = f"✓ {chosen.get('provider', '?')}"
+            except Exception as e:
+                logger.debug(f"Search failed for {f}: {e}")
+                matches = []
+
+            ext = os.path.splitext(f)[1]
+            newname = build_output_filename(parsed, chosen, meta, ext) if chosen else os.path.basename(f)
+            detected = f"{parsed['kind']}"
+            if parsed['kind'] == 'series':
+                detected += f" S{parsed['season']:02d}E{parsed['episode']:02d}"
+            elif parsed.get('year'):
+                detected += f" ({parsed['year']})"
+
+            self.file_results[f] = {
+                'parsed': parsed, 'meta': meta, 'matches': matches,
+                'chosen': chosen, 'newname': newname,
+                'all_provider_results': all_provider_results,
+            }
+            self.after(0, lambda ff=f, d=detected, nn=newname, st=status:
+                       self.rename_tree.insert('', 'end', iid=ff,
+                                               values=(os.path.basename(ff), d, nn, st)))
+
+        self.after(0, lambda: self.bp_search_status.config(text=T('bp_search_done')))
+
+    def _on_rename_edit(self, event):
+        """Double-click to edit the new name cell inline."""
+        item = self.rename_tree.identify_row(event.y)
+        col = self.rename_tree.identify_column(event.x)
+        if not item or col != '#3':  # newname column
+            return
+        x, y, w, h = self.rename_tree.bbox(item, col)
+        cur = self.rename_tree.set(item, 'newname')
+        entry = tk.Entry(self.rename_tree)
+        entry.insert(0, cur)
+        entry.select_range(0, tk.END)
+        entry.focus()
+        entry.place(x=x, y=y, width=w, height=h)
+
+        def _commit(_e=None):
+            val = entry.get()
+            self.rename_tree.set(item, 'newname', val)
+            if item in self.file_results:
+                self.file_results[item]['newname'] = val
+            entry.destroy()
+
+        entry.bind('<Return>', _commit)
+        entry.bind('<FocusOut>', _commit)
+        entry.bind('<Escape>', lambda e: entry.destroy())
+
+    # ---- Track order ----
+    def _load_full_tracks(self, mkv_path):
+        """Load all tracks (incl. video) with forced flag for reorder matching."""
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get()
+        try:
+            res = run_hidden([mkvmerge, "-J", mkv_path])
+            info = json.loads(res.stdout)
+            tracks = []
+            for t in info.get("tracks", []):
+                props = t.get("properties", {})
+                tracks.append({
+                    'id': t['id'],
+                    'type': t['type'],
+                    'lang': props.get('language', 'und'),
+                    'name': props.get('track_name', ''),
+                    'forced': bool(props.get('forced_track', False)),
+                })
+            return tracks
+        except Exception as e:
+            logger.error(f"Full track load failed: {e}")
+            return []
+
+    def _browse_output_dir(self):
+        d = filedialog.askdirectory(title="Dossier de sortie")
+        if d:
+            self.bp_output_path_var.set(d)
+
+    def _load_first_file_ref_tracks(self):
+        files = list(self.file_list.get(0, tk.END))
+        if not files:
+            messagebox.showwarning("Batch Pro", "Aucun fichier dans la liste !")
+            return
+        tracks = self._load_full_tracks(files[0])
+        self.track_tree.delete(*self.track_tree.get_children())
+        for t in tracks:
+            self.track_tree.insert('', 'end', iid=str(t['id']),
+                                   values=(t['id'], t['type'], t['lang'], t['name'],
+                                           '✓' if t['forced'] else ''))
+
+    def _load_ref_tracks(self):
+        f = filedialog.askopenfilename(filetypes=[("MKV Files", "*.mkv")])
+        if not f:
+            return
+        tracks = self._load_full_tracks(f)
+        self.track_tree.delete(*self.track_tree.get_children())
+        for t in tracks:
+            self.track_tree.insert('', 'end', iid=str(t['id']),
+                                   values=(t['id'], t['type'], t['lang'], t['name'],
+                                           '✓' if t['forced'] else ''))
+
+    def _move_track(self, direction):
+        sel = self.track_tree.selection()
+        if not sel:
+            return
+        item = sel[0]
+        idx = self.track_tree.index(item)
+        new_idx = idx + direction
+        children = self.track_tree.get_children()
+        if 0 <= new_idx < len(children):
+            self.track_tree.move(item, '', new_idx)
+
+    def _build_track_template(self):
+        """Read the current track_tree order into a matching template."""
+        template = []
+        for item in self.track_tree.get_children():
+            vals = self.track_tree.item(item, 'values')
+            template.append({
+                'type': vals[1],
+                'lang': vals[2],
+                'forced': vals[4] == '✓',
+            })
+        return template
+
+    def _compute_track_order(self, file_tracks, template):
+        """Match file tracks to template order.
+        Returns (ordered_ids, unmatched_tmpl, extra_tracks).
+        unmatched_tmpl = template entries absent from this file.
+        extra_tracks   = file tracks not in template (appended at end).
+        """
+        used = set()
+        ordered_ids = []
+        unmatched_tmpl = []
+        for tmpl in template:
+            matched = False
+            for t in file_tracks:
+                if t['id'] in used:
+                    continue
+                if (t['type'] == tmpl['type'] and t['lang'] == tmpl['lang']
+                        and t['forced'] == tmpl['forced']):
+                    ordered_ids.append(t['id'])
+                    used.add(t['id'])
+                    matched = True
+                    break
+            if not matched:
+                unmatched_tmpl.append(tmpl)
+        # Append any unmatched file tracks in original order
+        extra_tracks = []
+        for t in file_tracks:
+            if t['id'] not in used:
+                ordered_ids.append(t['id'])
+                used.add(t['id'])
+                extra_tracks.append(t)
+        return ordered_ids, unmatched_tmpl, extra_tracks
+
+    # ---- Metadata embedding ----
+    def _apply_picker_prefs(self, filepath, chosen, prefs):
+        """Fetch per-file content from picker source preferences.
+        Cover = series poster (same for all episodes).
+        Description/synopsis = per-episode content from chosen provider.
+        """
+        res = self.file_results.get(filepath, {})
+        all_pr = res.get('all_provider_results', {})
+        parsed = res.get('parsed', {})
+        tvdb_key = self.settings.get('tvdb_api_key', '')
+        tmdb_key = self.settings.get('tmdb_api_key', '')
+        lang = self.search_lang_var.get()
+        lang_tvdb = {'fr': 'fra', 'en': 'eng', 'ja': 'jpn', 'de': 'deu',
+                     'es': 'spa', 'it': 'ita'}.get(lang, 'eng')
+        lang_tmdb = {'fr': 'fr-FR', 'en': 'en-US', 'ja': 'ja-JP', 'de': 'de-DE',
+                     'es': 'es-ES', 'it': 'it-IT'}.get(lang, 'en-US')
+
+        def _get_provider(pname):
+            if pname == 'TVDB' and tvdb_key:
+                return TVDBProvider(tvdb_key, lang_tvdb)
+            if pname == 'TMDB' and tmdb_key:
+                return TMDBProvider(tmdb_key, lang_tmdb)
+            if pname == 'TVmaze':
+                return TVmazeProvider()
+            return None
+
+        cover_src = prefs.get('cover_src', '')
+        desc_src = prefs.get('desc_src', '')
+        syn_src = prefs.get('synopsis_src', '')
+        cast_src = prefs.get('cast_src', '')
+        genre_src = prefs.get('genre_src', '')
+        crew_src = prefs.get('crew_src', '')
+        crew_markers = ('__director__', '__writer__', '__producer__', '__studio__')
+
+        def _fetch_cast(pname):
+            if not pname or pname not in all_pr:
+                return []
+            try:
+                prov = _get_provider(pname)
+                sid = all_pr[pname]['id']
+                if not prov or parsed.get('kind') != 'series':
+                    if prov and hasattr(prov, 'get_episode_cast') and parsed.get('kind') == 'series':
+                        pass
+                    else:
+                        return []
+                if hasattr(prov, 'get_episode_cast'):
+                    return prov.get_episode_cast(sid, parsed['season'], parsed['episode'])
+            except Exception as e:
+                logger.debug(f"Prefs _fetch_cast {pname}: {e}")
+            return []
+
+        if cover_src and cover_src in all_pr:
+            try:
+                prov = _get_provider(cover_src)
+                sid = all_pr[cover_src]['id']
+                if prov and hasattr(prov, 'get_series_poster'):
+                    url = prov.get_series_poster(sid)
+                    if url:
+                        chosen['cover_url'] = url
+                elif prov and parsed.get('kind') == 'series':
+                    ep_meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
+                    chosen['cover_url'] = ep_meta.get('still_url', '')
+            except Exception as e:
+                logger.debug(f"Prefs cover fetch: {e}")
+
+        # Cast (actors from cast_src) + crew (director/producer from crew_src), merged
+        merged_cast = []
+        if cast_src:
+            merged_cast += [a for a in _fetch_cast(cast_src) if a.get('role') not in crew_markers]
+        if crew_src:
+            merged_cast += [a for a in _fetch_cast(crew_src) if a.get('role') in crew_markers]
+        if merged_cast:
+            chosen['cast'] = merged_cast
+
+        # Genres from series meta
+        if genre_src and genre_src in all_pr:
+            try:
+                prov = _get_provider(genre_src)
+                sid = all_pr[genre_src]['id']
+                if prov and hasattr(prov, 'get_series_meta'):
+                    s_meta = prov.get_series_meta(sid)
+                    if s_meta.get('genres'):
+                        chosen['genres'] = s_meta['genres']
+            except Exception as e:
+                logger.debug(f"Prefs genres fetch: {e}")
+
+        for src_key, chosen_key in [(desc_src, 'description'), (syn_src, 'synopsis')]:
+            if src_key and src_key in all_pr:
+                try:
+                    prov = _get_provider(src_key)
+                    sid = all_pr[src_key]['id']
+                    if prov:
+                        if parsed.get('kind') == 'series':
+                            ep_meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
+                        else:
+                            ep_meta = prov.get_movie_meta(sid) if hasattr(prov, 'get_movie_meta') else {}
+                        text = ep_meta.get('description', '')
+                        if text:
+                            chosen[chosen_key] = text
+                except Exception as e:
+                    logger.debug(f"Prefs {chosen_key} fetch: {e}")
+
+        return chosen
+
+    def _generate_kodi_nfo(self, parsed, chosen, series_title=''):
+        """Generate Kodi-compatible NFO XML string (episodedetails or movie)."""
+        ep_title = chosen.get('episode_name', '') or chosen.get('name', '')
+        description = chosen.get('description', '')
+        synopsis = chosen.get('synopsis', description)
+        aired = chosen.get('aired', '')
+        year = chosen.get('year', '') or parsed.get('year', '')
+        genres = chosen.get('genres', [])
+        cast = chosen.get('cast', [])
+        imdb_id = chosen.get('imdb_id', '')
+        content_rating = chosen.get('content_rating', '')
+
+        if parsed.get('kind') == 'series':
+            root = ET.Element('episodedetails')
+            ET.SubElement(root, 'title').text = ep_title
+            ET.SubElement(root, 'showtitle').text = series_title or chosen.get('name', '')
+            if parsed.get('season'):
+                ET.SubElement(root, 'season').text = str(parsed['season'])
+            if parsed.get('episode'):
+                ET.SubElement(root, 'episode').text = str(parsed['episode'])
+            ET.SubElement(root, 'plot').text = synopsis
+            ET.SubElement(root, 'outline').text = description
+            if aired:
+                ET.SubElement(root, 'aired').text = aired
+            elif year:
+                ET.SubElement(root, 'aired').text = str(year)
+        else:
+            root = ET.Element('movie')
+            ET.SubElement(root, 'title').text = ep_title or chosen.get('name', '')
+            ET.SubElement(root, 'plot').text = synopsis
+            ET.SubElement(root, 'outline').text = description
+            if year:
+                ET.SubElement(root, 'year').text = str(year)
+
+        # Director + producers + studios (from crew markers)
+        directors_nfo = [a['name'] for a in cast if a.get('role') == '__director__']
+        producers_nfo = [a['name'] for a in cast if a.get('role') == '__producer__']
+        studios_nfo = [a['name'] for a in cast if a.get('role') == '__studio__']
+        actors_nfo = [a for a in cast if a.get('role') not in
+                      ('__director__', '__writer__', '__producer__', '__studio__')]
+        for d in directors_nfo:
+            ET.SubElement(root, 'director').text = d
+        for p in producers_nfo:
+            ET.SubElement(root, 'producer').text = p
+        for st in studios_nfo:
+            ET.SubElement(root, 'studio').text = st
+
+        # Common fields
+        cast = actors_nfo
+        for genre in genres:
+            if genre:
+                ET.SubElement(root, 'genre').text = genre
+        if content_rating:
+            ET.SubElement(root, 'mpaa').text = content_rating
+        if imdb_id:
+            uid = ET.SubElement(root, 'uniqueid')
+            uid.set('type', 'imdb')
+            uid.set('default', 'true')
+            uid.text = imdb_id
+        for actor in cast[:15]:
+            aname = actor.get('name', '')
+            if not aname:
+                continue
+            a_el = ET.SubElement(root, 'actor')
+            ET.SubElement(a_el, 'name').text = aname
+            if actor.get('role'):
+                ET.SubElement(a_el, 'role').text = actor['role']
+
+        if not ep_title and not description and not genres:
+            return None  # nothing meaningful to embed
+        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                + ET.tostring(root, encoding='unicode'))
+
+    def _embed_metadata_to_file(self, mkv_path, chosen, parsed):
+        """Embed MKV tags (title/description) and cover art in-place via mkvpropedit."""
+        mkvpropedit = self.parent_app.mkvpropedit_path_entry.get()
+        if not mkvpropedit or not os.path.exists(mkvpropedit):
+            self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
+            return
+        args = [mkvpropedit, mkv_path]
+        temp_files = []
+
+        # Pre-pass: remove existing cover/kodi-metadata attachments before adding new ones
+        if chosen.get('clean_tags', True):
+            del_args = [mkvpropedit, mkv_path]
+            for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                del_args += ['--delete-attachment', f'name:{att_name}']
+            try:
+                run_hidden(del_args)  # return code ignored (attachment may not exist)
+                self._bp_log("  meta: anciens attachments supprimés")
+            except Exception:
+                pass
+        try:
+            # Build XML tags
+            title = chosen.get('episode_name') or chosen.get('name', '')
+            series_title = chosen.get('name', '') if parsed.get('kind') == 'series' else ''
+            description = chosen.get('description', '')
+            synopsis = chosen.get('synopsis', description)
+            aired = chosen.get('aired', '')
+            year = chosen.get('year', '') or parsed.get('year', '')
+            date_str = aired or (str(year) if year else '')
+            genres = chosen.get('genres', [])
+            cast = chosen.get('cast', [])
+            imdb_id = chosen.get('imdb_id', '')
+            content_rating = chosen.get('content_rating', '')
+
+            if title or description or synopsis or genres or cast:
+                root = ET.Element('Tags')
+                tag = ET.SubElement(root, 'Tag')
+                targets = ET.SubElement(tag, 'Targets')
+                ET.SubElement(targets, 'TargetTypeValue').text = '50'
+                if title:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'TITLE'
+                    ET.SubElement(s, 'String').text = title
+                if description:
+                    # SUMMARY tag (court)
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'SUMMARY'
+                    ET.SubElement(s, 'String').text = description
+                    # DESCRIPTION tag = "Short Description" dans MetaX
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'DESCRIPTION'
+                    ET.SubElement(s, 'String').text = description
+                if synopsis and synopsis != description:
+                    # SYNOPSIS tag = "Long Description" dans MetaX
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'SYNOPSIS'
+                    ET.SubElement(s, 'String').text = synopsis
+                if date_str:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'DATE_RELEASED'
+                    ET.SubElement(s, 'String').text = date_str
+                # Show title (series name) + content type + season/episode
+                if series_title:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'SHOW'
+                    ET.SubElement(s, 'String').text = series_title
+                content_type = 'TV Show' if parsed.get('kind') == 'series' else 'Movie'
+                s = ET.SubElement(tag, 'Simple')
+                ET.SubElement(s, 'Name').text = 'CONTENT_TYPE'
+                ET.SubElement(s, 'String').text = content_type
+                if parsed.get('kind') == 'series':
+                    if parsed.get('season'):
+                        s = ET.SubElement(tag, 'Simple')
+                        ET.SubElement(s, 'Name').text = 'SEASON.PART_NUM'
+                        ET.SubElement(s, 'String').text = str(parsed['season'])
+                    if parsed.get('episode'):
+                        s = ET.SubElement(tag, 'Simple')
+                        ET.SubElement(s, 'Name').text = 'EPISODE.PART_NUM'
+                        ET.SubElement(s, 'String').text = str(parsed['episode'])
+                # Director / Screenwriter / Producer / Studio (from crew markers)
+                directors = [a['name'] for a in cast if a.get('role') == '__director__']
+                writers = [a['name'] for a in cast if a.get('role') == '__writer__']
+                producers = [a['name'] for a in cast if a.get('role') == '__producer__']
+                studios = [a['name'] for a in cast if a.get('role') == '__studio__']
+                actors_only = [a for a in cast if a.get('role') not in
+                               ('__director__', '__writer__', '__producer__', '__studio__')]
+                if directors:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'DIRECTOR'
+                    ET.SubElement(s, 'String').text = ', '.join(directors)
+                if writers:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'WRITTEN_BY'
+                    ET.SubElement(s, 'String').text = ', '.join(writers)
+                if producers:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'PRODUCER'
+                    ET.SubElement(s, 'String').text = ', '.join(producers)
+                if studios:
+                    studio_str = ', '.join(studios)
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'PRODUCTION_STUDIO'
+                    ET.SubElement(s, 'String').text = studio_str
+                    s2 = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s2, 'Name').text = 'COPYRIGHT'
+                    ET.SubElement(s2, 'String').text = studio_str
+                cast = actors_only  # use only actors for ARTIST/ACTOR tags below
+
+                # Artist / Performer (= cast comma-joined — shown as "Interprète" in MediaInfo)
+                if cast:
+                    artist_str = ", ".join(a['name'] for a in cast[:10] if a.get('name'))
+                    if artist_str:
+                        s = ET.SubElement(tag, 'Simple')
+                        ET.SubElement(s, 'Name').text = 'ARTIST'
+                        ET.SubElement(s, 'String').text = artist_str
+                        # Single ACTOR tag comma-joined (MetaX Video > "Actors/Cast" compatibility)
+                        s2 = ET.SubElement(tag, 'Simple')
+                        ET.SubElement(s2, 'Name').text = 'ACTOR'
+                        ET.SubElement(s2, 'String').text = artist_str
+                # Genres — single comma-joined tag (like MetaX, shown fully by MediaInfo)
+                if genres:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'GENRE'
+                    ET.SubElement(s, 'String').text = ', '.join(g for g in genres if g)
+                # Rating (both LAW_RATING and RATING for MetaX compatibility)
+                if content_rating:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'LAW_RATING'
+                    ET.SubElement(s, 'String').text = content_rating
+                    s2 = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s2, 'Name').text = 'RATING'
+                    ET.SubElement(s2, 'String').text = content_rating
+                # IMDB
+                if imdb_id:
+                    s = ET.SubElement(tag, 'Simple')
+                    ET.SubElement(s, 'Name').text = 'IMDB'
+                    ET.SubElement(s, 'String').text = imdb_id
+                xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='unicode')
+                tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False,
+                                                 mode='w', encoding='utf-8')
+                tf.write(xml_str)
+                tf.close()
+                temp_files.append(tf.name)
+                args += ['--tags', f'all:{tf.name}']
+                self._bp_log(f"  meta: tags title={title[:40]!r}")
+
+            # Download cover art
+            cover_url = chosen.get('cover_url', '')
+            if cover_url:
+                try:
+                    ext = '.jpg'
+                    if cover_url.lower().endswith('.png'):
+                        ext = '.png'
+                    mime = 'image/png' if ext == '.png' else 'image/jpeg'
+                    cf = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+                    cf.close()
+                    req = urllib.request.Request(cover_url,
+                                                 headers={'User-Agent': 'PyMkvPropEdit/3.7'})
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        with open(cf.name, 'wb') as fout:
+                            fout.write(resp.read())
+                    temp_files.append(cf.name)
+                    args += ['--attachment-name', f'cover{ext}',
+                             '--attachment-mime-type', mime,
+                             '--add-attachment', cf.name]
+                    self._bp_log("  meta: cover art téléchargé")
+                except Exception as e:
+                    self._bp_log(f"  ⚠️ meta: cover download échoué: {e}")
+
+            # Generate kodi-metadata NFO attachment
+            try:
+                nfo_xml = self._generate_kodi_nfo(parsed, chosen, series_title)
+                if nfo_xml:
+                    nf = tempfile.NamedTemporaryFile(suffix='.nfo', delete=False,
+                                                     mode='w', encoding='utf-8')
+                    nf.write(nfo_xml)
+                    nf.close()
+                    temp_files.append(nf.name)
+                    args += ['--attachment-name', 'kodi-metadata',
+                             '--attachment-mime-type', 'application/xml',
+                             '--add-attachment', nf.name]
+                    self._bp_log("  meta: kodi-metadata NFO généré")
+            except Exception as e:
+                self._bp_log(f"  ⚠️ meta: kodi-metadata échoué: {e}")
+
+            if len(args) > 2:
+                proc = run_hidden(args)
+                if proc.returncode in (0, 1):
+                    self._bp_log("  meta: intégrée OK")
+                else:
+                    self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode}")
+        finally:
+            for f in temp_files:
+                safe_remove(f)
+
+    # ---- Pipeline execution ----
+    def _run_pipeline(self):
+        files = list(self.file_list.get(0, tk.END))
+        if not files:
+            messagebox.showwarning("Batch Pro", "Aucun fichier ajouté !")
+            return
+        self.bp_run_btn.config(state='disabled')
+        self.bp_progress['maximum'] = len(files)
+        self.bp_progress['value'] = 0
+        self.bp_status_lbl.config(text=f"Démarrage… 0/{len(files)} (0%)", fg='#0066cc')
+        self.bp_log.delete("1.0", tk.END)
+        threading.Thread(target=self._pipeline_worker, args=(files,), daemon=True).start()
+
+    def _pipeline_worker(self, files):
+        do_sync = self.bp_sync_var.get()
+        do_sync_subs = self.bp_sync_subs_var.get()
+        do_props = self.bp_props_var.get()
+        do_reorder = self.bp_reorder_var.get()
+        do_rename = self.bp_rename_var.get()
+        use_output_dir = self.bp_output_dir_var.get()
+        output_dir_path = self.bp_output_path_var.get().strip()
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get()
+        ref_lang = self.bp_ref_lang_var.get()
+        try:
+            duration = int(self.bp_duration_var.get())
+        except ValueError:
+            duration = 120
+        try:
+            start_offset = int(self.bp_start_var.get())
+        except ValueError:
+            start_offset = 300
+
+        template = self._build_track_template() if do_reorder else []
+        start_time = time.time()
+        done = 0
+
+        for mkv_path in files:
+            base_name = os.path.basename(mkv_path)
+            self._bp_log(f"━━ {base_name} ━━")
+            try:
+                current_file = mkv_path
+                needs_remux = False
+                sync_flags = []
+                order_arg = []
+
+                # Compute sync delays
+                if do_sync:
+                    tracks_data = self.load_mkv_tracks(mkv_path, mkvmerge)
+                    if tracks_data:
+                        ref_track = next((t for t in tracks_data if t["type"] == "audio"
+                                          and t["lang"] == ref_lang), None)
+                        if not ref_track:
+                            ref_track = next((t for t in tracks_data if t["type"] == "audio"), None)
+                        if ref_track:
+                            ref_data = self.extract_audio_track(
+                                mkv_path, ref_track["ffmpeg_idx"], duration,
+                                self.temp_files, start_offset)
+                            if ref_data is not None:
+                                for t in tracks_data:
+                                    if t["type"] == "audio" and t["id"] != ref_track["id"]:
+                                        td = self.extract_audio_track(
+                                            mkv_path, t["ffmpeg_idx"], duration,
+                                            self.temp_files, start_offset)
+                                        if td is not None:
+                                            t["delay"] = self.calculate_delay(ref_data, td)
+                                            t["processed"] = True
+                                # Apply to subtitles same lang (if checkbox checked)
+                                if do_sync_subs:
+                                    lang_delays = {t["lang"]: t["delay"] for t in tracks_data
+                                                   if t["type"] == "audio" and t.get("processed")}
+                                    for t in tracks_data:
+                                        if t["type"] == "subtitles" and t["lang"] in lang_delays:
+                                            t["delay"] = lang_delays[t["lang"]]
+                                            t["processed"] = True
+                                for t in tracks_data:
+                                    if t.get("processed") and t["delay"] != 0:
+                                        sync_flags += ["--sync", f"{t['id']}:{t['delay']}"]
+                                        sign = "+" if t["delay"] > 0 else ""
+                                        tname_str = f" [{t['name']}]" if t.get('name') else ""
+                                        self._bp_log(f"  sync trk{t['id']} {t['type']}/{t['lang']}{tname_str}: {sign}{t['delay']}ms")
+                                if not sync_flags:
+                                    self._bp_log("  sync: aucun décalage détecté (pistes déjà en phase)")
+                    if sync_flags:
+                        needs_remux = True
+
+                # Compute reorder
+                if do_reorder and template:
+                    file_tracks = self._load_full_tracks(mkv_path)
+                    ordered_ids, unmatched_tmpl, extra_tracks = self._compute_track_order(file_tracks, template)
+                    if unmatched_tmpl:
+                        desc = ", ".join(f"{t['type']}/{t['lang']}" for t in unmatched_tmpl)
+                        self._bp_log(f"  ⚠️ pistes template absentes de ce fichier: {desc}")
+                    if extra_tracks:
+                        desc = ", ".join(f"{t['type']}/{t['lang']}" for t in extra_tracks)
+                        self._bp_log(f"  ℹ️ pistes hors template ajoutées en fin: {desc}")
+                    # Only remux if order actually differs
+                    if ordered_ids != [t['id'] for t in file_tracks]:
+                        order_str = ",".join(f"0:{tid}" for tid in ordered_ids)
+                        order_arg = ["--track-order", order_str]
+                        needs_remux = True
+                        self._bp_log(f"  réordonnancement: {order_str}")
+                    else:
+                        self._bp_log("  ordre pistes: déjà correct, pas de remux nécessaire")
+
+                # Single-pass mkvmerge (sync + reorder)
+                if needs_remux:
+                    b, ext = os.path.splitext(mkv_path)
+                    out_file = f"{b}_PRO{ext}"
+                    cmd = [mkvmerge, "-o", out_file] + sync_flags + order_arg + [mkv_path]
+                    proc = run_hidden(cmd)
+                    if proc.returncode in (0, 1) and os.path.exists(out_file):
+                        current_file = out_file
+                        self._bp_log("  remux OK")
+                    else:
+                        self._bp_log(f"  ⚠️ remux échec (code {proc.returncode})")
+
+                # mkvpropedit params
+                if do_props:
+                    success, msg = self.apply_mkvpropedit_to_file(current_file, self.parent_app)
+                    self._bp_log(f"  mkvpropedit: {msg or 'OK'}")
+
+                # Embed metadata (tags + cover art)
+                do_embed = self.bp_embed_meta_var.get()
+                if do_embed and mkv_path in self.file_results:
+                    res = self.file_results[mkv_path]
+                    chosen_embed = dict(res.get('chosen', {}))
+                    chosen_embed['clean_tags'] = self.bp_clean_tags_var.get()
+                    # If picker prefs exist, re-fetch per-episode content from chosen provider
+                    prefs = self.meta_picker_prefs
+                    if prefs:
+                        chosen_embed = self._apply_picker_prefs(mkv_path, chosen_embed, prefs)
+                    if chosen_embed.get('description') or chosen_embed.get('cover_url'):
+                        self._embed_metadata_to_file(current_file, chosen_embed, res.get('parsed', {}))
+                    else:
+                        self._bp_log("  meta: pas de données (lancer 🔍 d'abord)")
+
+                # Finalize: rename + optional output directory
+                final_name = os.path.basename(current_file)
+                if do_rename and mkv_path in self.file_results:
+                    proposed = self.file_results[mkv_path].get('newname', '')
+                    if proposed:
+                        final_name = proposed
+
+                # Determine final directory
+                if use_output_dir:
+                    final_dir = output_dir_path if output_dir_path else os.path.join(
+                        os.path.dirname(mkv_path), "Batch Pro Output")
+                    try:
+                        os.makedirs(final_dir, exist_ok=True)
+                    except Exception as e:
+                        self._bp_log(f"  ⚠️ dossier sortie inaccessible: {e}")
+                        final_dir = os.path.dirname(current_file)
+                else:
+                    final_dir = os.path.dirname(current_file)
+
+                final_path = os.path.join(final_dir, final_name)
+
+                if current_file != final_path:
+                    try:
+                        if os.path.exists(final_path):
+                            os.remove(final_path)
+                        os.rename(current_file, final_path)
+                        if final_name != os.path.basename(current_file):
+                            self._bp_log(f"  renommé → {final_name}")
+                        if use_output_dir:
+                            self._bp_log(f"  → {final_dir}")
+                    except Exception as e:
+                        self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
+                elif use_output_dir and final_dir != os.path.dirname(current_file):
+                    self._bp_log(f"  ℹ️ fichier déjà à destination")
+
+                self._bp_log(f"  ✓ terminé")
+
+            except Exception as e:
+                logger.error(f"Batch Pro error on {base_name}: {e}")
+                self._bp_log(f"  ⚠️ erreur: {e}")
+
+            self.cleanup_temp(self.temp_files)
+            done += 1
+            total = len(files)
+            elapsed = time.time() - start_time
+            eta = (elapsed / done) * (total - done) if done > 0 else 0
+            percent = int(done / total * 100) if total else 100
+
+            def _fmt(sec):
+                return f"{int(sec // 60)}m {int(sec % 60)}s"
+
+            status = (f"{done}/{total} ({percent}%)  •  "
+                      f"Écoulé: {_fmt(elapsed)}  •  ETA: {_fmt(eta)}")
+            self.after(0, lambda v=done, st=status: (
+                self.bp_progress.configure(value=v),
+                self.bp_status_lbl.config(text=st),
+            ))
+
+        total_time = time.time() - start_time
+        self._bp_log(f"━━ Pipeline terminé en {int(total_time // 60)}m {int(total_time % 60)}s ━━")
+        self.after(0, lambda: (
+            self.bp_run_btn.config(state='normal'),
+            self.bp_status_lbl.config(
+                text=f"✓ Terminé — {done}/{len(files)} fichiers en "
+                     f"{int(total_time // 60)}m {int(total_time % 60)}s", fg='#008000'),
+        ))
+        threading.Thread(target=notify_toast,
+                         args=(f"Batch Pro — {T('notif_batch_done')}",
+                               T('notif_batch_body').format(s=done, e=0)),
+                         daemon=True).start()
+
+
+# ============================================================================
 # MAIN APPLICATION CLASS
 # ============================================================================
 
@@ -2315,19 +4678,15 @@ class PyMkvPropEdit:
         self.settings = self.load_settings()
         self.presets = self.load_presets()
 
-        # Window size: 1450×920 centered on first launch, restore saved size after
+        # Window size — restore saved, always centered on screen
         self.window_width = self.settings.get('window_width', 1450)
         self.window_height = self.settings.get('window_height', 920)
-        if 'window_width' not in self.settings:
-            # Center on screen for first launch
-            self.root.update_idletasks()
-            sw = self.root.winfo_screenwidth()
-            sh = self.root.winfo_screenheight()
-            x = (sw - self.window_width) // 2
-            y = (sh - self.window_height) // 2
-            self.root.geometry(f"{self.window_width}x{self.window_height}+{x}+{y}")
-        else:
-            self.root.geometry(f"{self.window_width}x{self.window_height}")
+        self.root.update_idletasks()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - self.window_width) // 2
+        y = max(0, (sh - self.window_height) // 2)
+        self.root.geometry(f"{self.window_width}x{self.window_height}+{x}+{y}")
 
         self.theme = self.settings.get('theme', 'light')
         self.save_tracks_var = tk.BooleanVar(value=self.settings.get('save_tracks', True))
@@ -2704,6 +5063,24 @@ class PyMkvPropEdit:
             'extract_out_dir': self.extract_frames_app.out_dir_entry.get() if hasattr(self, 'extract_frames_app') else '',
             'extract_range_from': self.extract_frames_app.range_from_var.get() if hasattr(self, 'extract_frames_app') else '0',
             'extract_range_to': self.extract_frames_app.range_to_var.get() if hasattr(self, 'extract_frames_app') else '100',
+            # API keys + Batch Pro settings
+            'tvdb_api_key': self.tvdb_key_entry.get() if hasattr(self, 'tvdb_key_entry') else self.settings.get('tvdb_api_key', ''),
+            'tmdb_api_key': self.tmdb_key_entry.get() if hasattr(self, 'tmdb_key_entry') else self.settings.get('tmdb_api_key', ''),
+            'bp_search_lang': self.batch_pro_app.search_lang_var.get() if hasattr(self, 'batch_pro_app') else 'fr',
+            'bp_api_provider': self.batch_pro_app.bp_api_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
+            'bp_ref_lang': self.batch_pro_app.bp_ref_lang_var.get() if hasattr(self, 'batch_pro_app') else 'jpn',
+            'bp_sync': self.batch_pro_app.bp_sync_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_sync_subs': self.batch_pro_app.bp_sync_subs_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_props': self.batch_pro_app.bp_props_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_reorder': self.batch_pro_app.bp_reorder_var.get() if hasattr(self, 'batch_pro_app') else False,
+            'bp_rename': self.batch_pro_app.bp_rename_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_embed_meta': self.batch_pro_app.bp_embed_meta_var.get() if hasattr(self, 'batch_pro_app') else False,
+            'bp_clean_tags': self.batch_pro_app.bp_clean_tags_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_output_dir': self.batch_pro_app.bp_output_dir_var.get() if hasattr(self, 'batch_pro_app') else False,
+            'bp_output_path': self.batch_pro_app.bp_output_path_var.get() if hasattr(self, 'batch_pro_app') else '',
+            'bp_pane_sizes': self.batch_pro_app._get_pane_sizes() if hasattr(self, 'batch_pro_app') else None,
+            'bp_picker_geometry': self.batch_pro_app.settings.get('bp_picker_geometry', '1200x740') if hasattr(self, 'batch_pro_app') else '1200x740',
+            'bp_picker_prefs': self.batch_pro_app.settings.get('bp_picker_prefs', {}) if hasattr(self, 'batch_pro_app') else {},
         }
         if self.save_tracks_var.get():
             settings['audio_tracks'] = self._save_tracks(self.audio_frames)
@@ -3104,6 +5481,17 @@ class PyMkvPropEdit:
         self.ffprobe_path_entry.insert(0, self.settings.get('ffprobe_path', find_ffprobe()))
         tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_ffprobe, bg='#008000', fg='white').pack(pady=5)
 
+        # API keys for Batch Pro auto-rename
+        tk.Label(self.options_tab, text=T('lbl_tvdb_key')).pack(pady=(10, 0))
+        self.tvdb_key_entry = tk.Entry(self.options_tab, width=50, show='*')
+        self.tvdb_key_entry.pack(pady=4)
+        self.tvdb_key_entry.insert(0, self.settings.get('tvdb_api_key', ''))
+
+        tk.Label(self.options_tab, text=T('lbl_tmdb_key')).pack(pady=(8, 0))
+        self.tmdb_key_entry = tk.Entry(self.options_tab, width=50, show='*')
+        self.tmdb_key_entry.pack(pady=4)
+        self.tmdb_key_entry.insert(0, self.settings.get('tmdb_api_key', ''))
+
         tk.Label(self.options_tab, text=T('lbl_theme')).pack(pady=10)
         theme_frame = tk.Frame(self.options_tab)
         theme_frame.pack(pady=10)
@@ -3139,6 +5527,11 @@ class PyMkvPropEdit:
         self.batch_sync_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.batch_sync_tab, text=T('tab_sync_batch'))
         self.audio_sync_batch_app = AudioSyncBatchTab(self.batch_sync_tab, self.settings, self)
+
+        # BATCH PRO TAB
+        self.batch_pro_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.batch_pro_tab, text=T('tab_batchpro'))
+        self.batch_pro_app = BatchProTab(self.batch_pro_tab, self.settings, self)
 
         # FRAME CHECK BATCH TAB
         self.frame_check_tab = ttk.Frame(self.notebook)
@@ -3196,6 +5589,22 @@ class PyMkvPropEdit:
         self.progress.pack(side=tk.LEFT, padx=10)
         tk.Button(self.progress_frame, text=T('btn_process'), command=self.process_files, bg='#00DC59', fg='#333333').pack(side=tk.LEFT, padx=5)
         tk.Button(self.progress_frame, text=T('btn_cancel'), command=self.cancel_process, bg='#FF0000', fg='white').pack(side=tk.LEFT, padx=5)
+
+        # Hide bottom process bar when Batch Pro tab is active (it has its own pipeline runner)
+        self.notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
+
+    def _on_tab_changed(self, event=None):
+        """Hide the propedit process bar/buttons when Batch Pro tab is active."""
+        try:
+            current = self.notebook.select()
+            is_batch_pro = (current == str(self.batch_pro_tab))
+            if is_batch_pro:
+                self.progress_frame.pack_forget()
+            else:
+                if not self.progress_frame.winfo_ismapped():
+                    self.progress_frame.pack(anchor='center', pady=10)
+        except Exception as e:
+            logger.debug(f"Tab change handler: {e}")
 
     # ---- File management ----
 
