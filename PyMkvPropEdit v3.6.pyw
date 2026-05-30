@@ -133,8 +133,10 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+# Silence noisy 3rd-party debug loggers
+for _noisy in ('PIL', 'PIL.TiffImagePlugin', 'PIL.Image', 'asyncio', 'win11toast'):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 logger = logging.getLogger("PyMkvPropEdit")
-logger.info(f"PyMkvPropEdit v{VERSION} starting...")
 
 # ============================================================================
 # WIN11TOAST — Notifications Windows 11
@@ -147,11 +149,19 @@ except ImportError:
     HAS_WIN11TOAST = False
 
 
+_notifications_enabled: bool = True  # updated from settings at app startup
+
+
 def notify_toast(title, body):
-    if not HAS_WIN11TOAST:
+    if not _notifications_enabled or not HAS_WIN11TOAST:
         return
     try:
-        icon_path = resolve_asset("vivi.ico") if os.path.exists(os.path.join(APP_DIR, "vivi.ico")) else None
+        # PNG gives better quality in win11toast than ICO
+        icon_path = resolve_asset("vivi.png")
+        if not os.path.exists(icon_path):
+            icon_path = resolve_asset("vivi.ico")
+        if not os.path.exists(icon_path):
+            icon_path = None
         kwargs = {'app_id': f'PyMkvPropEdit v{VERSION}'}
         if icon_path:
             kwargs['icon'] = {'src': icon_path, 'placement': 'appLogoOverride'}
@@ -226,6 +236,7 @@ STRINGS: dict = {
         'lbl_manual_dir': 'Ou dossier manuel :', 'lbl_quality_frame': ' Qualité ',
         'lbl_jpg_quality': 'JPG (q:v 1=best 31=worst) :', 'lbl_png_compression': 'PNG (0=fast 9=max compress) :',
         'lbl_frequency': 'Fréquence :', 'rb_interval': 'Intervalle (sec)', 'rb_all_frames': 'Toutes les frames',
+        'rb_frame_range': 'Plage frames', 'lbl_from_frame': 'Frame N°', 'lbl_to_frame': 'à N°',
         'lbl_every': '-> Une image toutes les :', 'lbl_seconds': 'secondes',
         'lbl_single_frame_section': ' Extraire une frame précise ',
         'lbl_timecode': 'Timecode (HH:MM:SS.ms) :', 'lbl_frame_num': 'ou Frame N° :',
@@ -264,12 +275,36 @@ STRINGS: dict = {
         # numpy missing
         'warn_no_scipy': '⚠️ Modules numpy/scipy manquants.', 'warn_install_scipy': 'Installez-les via : pip install numpy scipy',
         # First launch wizard
-        'wizard_title': 'Premier lancement — Configuration MKVToolNix',
+        'wizard_title': 'Premier lancement — Configuration',
+        'wizard_lang_section': '🌐 Langue / Language',
+        'wizard_mkv_section': '🔧 MKVToolNix',
         'wizard_msg': 'Choisissez comment utiliser les outils MKVToolNix :',
         'wizard_system': 'MKVToolNix système\n(utiliser la version installée sur votre PC)',
         'wizard_bundled': 'MKVToolNix intégré\n(inclus dans l\'app, aucune installation requise)',
         'wizard_bundled_unavail': '(non disponible dans cette version)',
         'wizard_confirm': 'Confirmer',
+        'wizard_restart_needed': '⚠️ Redémarrage requis pour appliquer la langue.',
+        'wizard_ffmpeg_section': '🎬 FFmpeg',
+        'wizard_ffmpeg_found': 'Installations FFmpeg détectées :',
+        'wizard_ffmpeg_none': 'Aucun FFmpeg détecté. Cliquez Parcourir pour en sélectionner un manuellement.',
+        'wizard_ffmpeg_scanning': '🔍 Recherche de FFmpeg en cours...',
+        'wizard_ffmpeg_browse': 'Parcourir...',
+        # Options MKV switch
+        'btn_use_bundled': '🔄 Utiliser MKVToolNix intégré',
+        'btn_use_system': '🔄 Utiliser MKVToolNix système',
+        'lbl_mkvtools_section': 'MKVToolNix',
+        'msg_switched_bundled': 'MKVToolNix intégré activé. Chemins mis à jour.',
+        'msg_no_bundled': 'MKVToolNix intégré non disponible dans cette version.',
+        'lbl_notifications': '🔔 Notifications Windows 11 (win11toast)',
+        'summary_title': 'Résumé du Traitement',
+        'summary_success': 'Succès',
+        'summary_errors': 'Erreurs',
+        'summary_duration': 'Durée',
+        'summary_see_errors': 'Voir les erreurs',
+        'summary_errors_title': 'Fichiers en Erreur',
+        'summary_caption_success': 'Strike! Victory!',
+        'summary_caption_warning': 'Attention !',
+        'summary_caption_failure': 'Échec...',
     },
     'en': {
         # Tabs
@@ -322,6 +357,7 @@ STRINGS: dict = {
         'lbl_manual_dir': 'Or manual folder:', 'lbl_quality_frame': ' Quality ',
         'lbl_jpg_quality': 'JPG (q:v 1=best 31=worst):', 'lbl_png_compression': 'PNG (0=fast 9=max compress):',
         'lbl_frequency': 'Frequency:', 'rb_interval': 'Interval (sec)', 'rb_all_frames': 'All frames',
+        'rb_frame_range': 'Frame range', 'lbl_from_frame': 'Frame N°', 'lbl_to_frame': 'to N°',
         'lbl_every': '-> One image every:', 'lbl_seconds': 'seconds',
         'lbl_single_frame_section': ' Extract a specific frame ',
         'lbl_timecode': 'Timecode (HH:MM:SS.ms):', 'lbl_frame_num': 'or Frame N°:',
@@ -373,12 +409,36 @@ STRINGS: dict = {
         'notif_extract_done': 'Extraction complete',
         'notif_extract_body': 'Frames extracted to output folder.',
         # First launch wizard
-        'wizard_title': 'First Launch — MKVToolNix Configuration',
+        'wizard_title': 'First Launch — Configuration',
+        'wizard_lang_section': '🌐 Langue / Language',
+        'wizard_mkv_section': '🔧 MKVToolNix',
         'wizard_msg': 'Choose how to use MKVToolNix tools:',
         'wizard_system': 'System MKVToolNix\n(use the version installed on your PC)',
         'wizard_bundled': 'Bundled MKVToolNix\n(included in the app, no installation needed)',
         'wizard_bundled_unavail': '(not available in this build)',
         'wizard_confirm': 'Confirm',
+        'wizard_restart_needed': '⚠️ Restart required to apply language change.',
+        'wizard_ffmpeg_section': '🎬 FFmpeg',
+        'wizard_ffmpeg_found': 'Detected FFmpeg installations:',
+        'wizard_ffmpeg_none': 'No FFmpeg detected. Click Browse to select one manually.',
+        'wizard_ffmpeg_scanning': '🔍 Scanning for FFmpeg...',
+        'wizard_ffmpeg_browse': 'Browse...',
+        # Options MKV switch
+        'btn_use_bundled': '🔄 Use Bundled MKVToolNix',
+        'btn_use_system': '🔄 Use System MKVToolNix',
+        'lbl_mkvtools_section': 'MKVToolNix',
+        'msg_switched_bundled': 'Bundled MKVToolNix activated. Paths updated.',
+        'msg_no_bundled': 'Bundled MKVToolNix not available in this build.',
+        'lbl_notifications': '🔔 Windows 11 Notifications (win11toast)',
+        'summary_title': 'Processing Summary',
+        'summary_success': 'Success',
+        'summary_errors': 'Errors',
+        'summary_duration': 'Duration',
+        'summary_see_errors': 'Show errors',
+        'summary_errors_title': 'Files with Errors',
+        'summary_caption_success': 'Strike! Victory!',
+        'summary_caption_warning': 'Warning!',
+        'summary_caption_failure': 'Failed...',
     }
 }
 
@@ -487,7 +547,116 @@ def find_ffprobe():
               os.path.join(APP_DIR, 'ffprobe.exe'), os.path.join(APP_DIR, 'ffmpeg', 'ffprobe.exe')]:
         if os.path.exists(p):
             return p
-    return 'ffprobe' 
+    return 'ffprobe'
+
+
+def find_system_mkv_tool(tool_name: str) -> str:
+    """Find a MKVToolNix tool: check PATH, then common Windows install dirs."""
+    found = shutil.which(tool_name)
+    if found:
+        return found
+    exe = f'{tool_name}.exe'
+    for d in [
+        r'C:\Program Files\MKVToolNix',
+        r'C:\Program Files (x86)\MKVToolNix',
+        r'C:\MKVToolNix',
+    ]:
+        p = os.path.join(d, exe)
+        if os.path.exists(p):
+            return p
+    return tool_name
+
+
+def _scan_ffmpeg_installs() -> list:
+    """Scan for all FFmpeg installations on this system.
+
+    Returns list of dicts: {path, real_path, version, date, label}
+    """
+    import datetime as _dt
+
+    candidates_raw = []
+
+    # 1. PATH shutil.which
+    p = shutil.which('ffmpeg')
+    if p:
+        candidates_raw.append(p)
+
+    # 2. WinGet Links (symlink)
+    winget_link = os.path.expanduser(
+        r'~\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe')
+    candidates_raw.append(winget_link)
+
+    # 3. WinGet Packages (glob)
+    winget_pkgs = os.path.expanduser(
+        r'~\AppData\Local\Microsoft\WinGet\Packages')
+    if os.path.isdir(winget_pkgs):
+        for exe in glob.glob(
+                os.path.join(winget_pkgs, 'FFmpeg*', '**', 'ffmpeg.exe'),
+                recursive=True):
+            candidates_raw.append(exe)
+
+    # 4. Scoop
+    for sp in [
+        os.path.expanduser(r'~\scoop\apps\ffmpeg\current\bin\ffmpeg.exe'),
+        os.path.expanduser(r'~\scoop\shims\ffmpeg.exe'),
+        r'C:\ProgramData\scoop\apps\ffmpeg\current\bin\ffmpeg.exe',
+    ]:
+        candidates_raw.append(sp)
+
+    # 5. Chocolatey
+    candidates_raw.append(r'C:\ProgramData\chocolatey\bin\ffmpeg.exe')
+
+    # 6. Common manual installs
+    for d in [r'C:\ffmpeg\bin', r'C:\Program Files\ffmpeg\bin',
+              r'C:\Program Files (x86)\ffmpeg\bin']:
+        candidates_raw.append(os.path.join(d, 'ffmpeg.exe'))
+
+    # 7. App-local
+    candidates_raw.append(os.path.join(APP_DIR, 'ffmpeg.exe'))
+
+    seen_real = set()
+    results = []
+
+    for raw_path in candidates_raw:
+        if not raw_path or not os.path.isfile(raw_path):
+            continue
+        try:
+            real = os.path.realpath(raw_path)
+        except Exception:
+            real = raw_path
+        if real in seen_real:
+            continue
+        seen_real.add(real)
+
+        # Get version string
+        try:
+            r = subprocess.run(
+                [raw_path, '-version'],
+                capture_output=True, text=True, timeout=4,
+                startupinfo=get_startupinfo()
+            )
+            first = (r.stdout or r.stderr or '').split('\n')[0]
+            m = re.search(r'version\s+(\S+)', first)
+            version = m.group(1) if m else 'unknown'
+        except Exception:
+            version = 'unknown'
+
+        # Get file date
+        try:
+            mtime = os.path.getmtime(real)
+            date_str = _dt.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
+        except Exception:
+            date_str = '?'
+
+        results.append({
+            'path': raw_path,
+            'real_path': real,
+            'version': version,
+            'date': date_str,
+            'label': f"v{version}  [{date_str}]  —  {raw_path}",
+        })
+
+    return results
 
 
 # ============================================================================
@@ -720,6 +889,14 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         self.mkv_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=5)
         tk.Button(input_frame, text=T('btn_open_mkv'), command=self.load_mkv_info, bg='#e1e1e1').pack(side=tk.LEFT, padx=5)
 
+        # DnD support for mkv entry
+        if TkinterDnD is not None:
+            try:
+                self.mkv_entry.drop_target_register(DND_FILES)
+                self.mkv_entry.dnd_bind('<<Drop>>', self._drop_mkv_entry)
+            except Exception:
+                pass
+
         # ZONE 2: SETTINGS
         top_panel = tk.Frame(main_frame)
         top_panel.pack(fill='x', pady=5)
@@ -767,6 +944,33 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         self.log_lbl = tk.Label(main_frame, text=T('lbl_waiting'), fg="gray", font=("Arial", 10, "italic"))
         self.log_lbl.pack(side=tk.BOTTOM, pady=5)
 
+    def _drop_mkv_entry(self, event):
+        """Handle drag-and-drop onto the MKV entry."""
+        files = self.mkv_entry.tk.splitlist(event.data)
+        if files:
+            f = files[0].strip('{}')
+            if f.lower().endswith('.mkv'):
+                self._load_mkv_path(f)
+
+    def _load_mkv_path(self, f):
+        """Load a MKV file path into the entry and refresh track info (DnD + shared helper)."""
+        self.mkv_entry.delete(0, tk.END)
+        self.mkv_entry.insert(0, f)
+        self.tree.delete(*self.tree.get_children())
+        self.tracks_data = []
+        self.analyze_btn.config(state='normal')
+        self.apply_btn.config(state='disabled')
+        self.log_lbl.config(text=T('lbl_file_loaded'))
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get() if hasattr(self, 'parent_app') and hasattr(self.parent_app, 'mkvmerge_path_entry') else self.settings.get('mkvmerge_path', 'mkvmerge')
+        tracks = self.load_mkv_tracks(f, mkvmerge)
+        if tracks:
+            self.tracks_data = tracks
+            for t in tracks:
+                self.tree.insert("", "end", iid=t["id"],
+                                 values=(t["id"], t["type"], t["lang"], t["name"], "En attente", "-"))
+        else:
+            messagebox.showerror("Erreur", "Impossible de lire le fichier.")
+
     def load_mkv_info(self):
         f = filedialog.askopenfilename(filetypes=[("MKV Files", "*.mkv")])
         if not f:
@@ -779,7 +983,7 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
         self.apply_btn.config(state='disabled')
         self.log_lbl.config(text="Fichier chargé. Cliquez sur Analyse.")
 
-        mkvmerge = self.settings.get('mkvmerge_path', 'mkvmerge')
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get() if hasattr(self, 'parent_app') and hasattr(self.parent_app, 'mkvmerge_path_entry') else self.settings.get('mkvmerge_path', 'mkvmerge')
         tracks = self.load_mkv_tracks(f, mkvmerge)
         if tracks:
             self.tracks_data = tracks
@@ -870,7 +1074,7 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
 
     def apply_delays(self):
         mkv = self.mkv_entry.get().strip('"')
-        mkvmerge = self.settings.get('mkvmerge_path', 'mkvmerge')
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get() if hasattr(self, 'parent_app') and hasattr(self.parent_app, 'mkvmerge_path_entry') else self.settings.get('mkvmerge_path', 'mkvmerge')
         base, ext = os.path.splitext(mkv)
         output_file = f"{base}_SYNC{ext}"
         cmd = [mkvmerge, "-o", output_file]
@@ -883,7 +1087,13 @@ class AudioSyncTab(ttk.Frame, AudioSyncMixin):
                 count += 1
 
         if count == 0:
-            messagebox.showinfo("Info", "Aucun délai à appliquer.")
+            # No delays to apply — but still run mkvpropedit on original if requested
+            if self.apply_props_var.get():
+                self._update_log("Aucun délai. Application des paramètres mkvpropedit sur le fichier original.")
+                success, msg = self.apply_mkvpropedit_to_file(mkv, self.parent_app)
+                self._update_log(msg)
+            else:
+                messagebox.showinfo("Info", "Aucun délai à appliquer.")
             return
 
         cmd += sync_flags
@@ -1040,7 +1250,7 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
             start_offset = 300
         apply_subs = self.apply_subs_var.get()
         apply_props = self.apply_props_var.get()
-        mkvmerge = self.settings.get('mkvmerge_path', 'mkvmerge')
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get() if hasattr(self, 'parent_app') and hasattr(self.parent_app, 'mkvmerge_path_entry') else self.settings.get('mkvmerge_path', 'mkvmerge')
         start_time = time.time()
         processed = 0
 
@@ -1091,13 +1301,25 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
                         sign = "+" if t["delay"] > 0 else ""
                         self._log(f" - {t['type'].capitalize()} Track {t['id']} ({t['lang']}): {sign}{t['delay']} ms")
 
-                self._apply_delays_batch(mkv_path, tracks_data, mkvmerge)
-                if apply_props:
-                    base, ext = os.path.splitext(mkv_path)
-                    output_file = f"{base}_SYNC{ext}"
-                    success, msg = self.apply_mkvpropedit_to_file(output_file, self.parent_app)
-                    if msg:
-                        self._log(msg)
+                has_delays = any(t.get("processed") and t["delay"] != 0 for t in tracks_data)
+                if has_delays:
+                    self._apply_delays_batch(mkv_path, tracks_data, mkvmerge)
+                    if apply_props:
+                        base, ext = os.path.splitext(mkv_path)
+                        output_file = f"{base}_SYNC{ext}"
+                        if os.path.exists(output_file):
+                            success, msg = self.apply_mkvpropedit_to_file(output_file, self.parent_app)
+                            if msg:
+                                self._log(msg)
+                        else:
+                            self._log(f"⚠️ Fichier SYNC introuvable pour mkvpropedit: {os.path.basename(output_file)}")
+                else:
+                    self._log("Aucun délai à appliquer.")
+                    if apply_props:
+                        self._log("Application des paramètres mkvpropedit sur le fichier original.")
+                        success, msg = self.apply_mkvpropedit_to_file(mkv_path, self.parent_app)
+                        if msg:
+                            self._log(msg)
 
                 self._log(f"Terminé pour {os.path.basename(mkv_path)}.")
 
@@ -1119,7 +1341,7 @@ class AudioSyncBatchTab(ttk.Frame, AudioSyncMixin):
 
         self._log("Batch terminé.")
         self.after(0, lambda: self.start_btn.config(state='normal'))
-        notify_toast(T('notif_sync_done'), T('notif_sync_body'))
+        threading.Thread(target=notify_toast, args=(T('notif_sync_done'), T('notif_sync_body')), daemon=True).start()
 
     def _apply_delays_batch(self, mkv, tracks_data, mkvmerge):
         base, ext = os.path.splitext(mkv)
@@ -1440,10 +1662,10 @@ class FrameExtractTab(ttk.Frame):
         line1 = tk.Frame(opts_frame)
         line1.pack(fill='x', padx=5, pady=5)
         tk.Label(line1, text=T('lbl_format')).pack(side=tk.LEFT)
-        self.format_var = tk.StringVar(value="jpg")
+        self.format_var = tk.StringVar(value=settings.get('extract_format', 'jpg'))
         ttk.Combobox(line1, textvariable=self.format_var, values=["jpg", "png", "bmp"], width=6, state="readonly").pack(side=tk.LEFT, padx=5)
 
-        self.auto_folder_var = tk.BooleanVar(value=True)
+        self.auto_folder_var = tk.BooleanVar(value=settings.get('extract_auto_folder', True))
         ttk.Checkbutton(line1, text=T('chk_auto_folder'), variable=self.auto_folder_var, command=self.toggle_path_entry).pack(side=tk.LEFT, padx=15)
 
         self.path_frame = tk.Frame(opts_frame)
@@ -1461,13 +1683,13 @@ class FrameExtractTab(ttk.Frame):
         line_quality.pack(fill='x', padx=5, pady=5)
 
         tk.Label(line_quality, text=T('lbl_jpg_quality')).pack(side=tk.LEFT, padx=5)
-        self.jpg_quality_var = tk.IntVar(value=2)
+        self.jpg_quality_var = tk.IntVar(value=settings.get('extract_jpg_quality', 2))
         self.jpg_quality_scale = tk.Scale(line_quality, from_=1, to=31, orient=tk.HORIZONTAL,
                                            variable=self.jpg_quality_var, length=120, showvalue=True)
         self.jpg_quality_scale.pack(side=tk.LEFT, padx=5)
 
         tk.Label(line_quality, text=T('lbl_png_compression')).pack(side=tk.LEFT, padx=(20, 5))
-        self.png_compression_var = tk.IntVar(value=5)
+        self.png_compression_var = tk.IntVar(value=settings.get('extract_png_compression', 5))
         self.png_compression_scale = tk.Scale(line_quality, from_=0, to=9, orient=tk.HORIZONTAL,
                                                variable=self.png_compression_var, length=100, showvalue=True)
         self.png_compression_scale.pack(side=tk.LEFT, padx=5)
@@ -1476,15 +1698,30 @@ class FrameExtractTab(ttk.Frame):
         line2 = tk.Frame(opts_frame)
         line2.pack(fill='x', padx=5, pady=5)
         tk.Label(line2, text=T('lbl_frequency')).pack(side=tk.LEFT)
-        self.mode_var = tk.StringVar(value="interval")
-        tk.Radiobutton(line2, text=T('rb_interval'), variable=self.mode_var, value="interval", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
-        tk.Radiobutton(line2, text=T('rb_all_frames'), variable=self.mode_var, value="all", command=self.toggle_inputs).pack(side=tk.LEFT, padx=10)
+        self.mode_var = tk.StringVar(value=settings.get('extract_mode', 'interval'))
+        tk.Radiobutton(line2, text=T('rb_interval'), variable=self.mode_var, value="interval", command=self.toggle_inputs).pack(side=tk.LEFT, padx=6)
+        tk.Radiobutton(line2, text=T('rb_all_frames'), variable=self.mode_var, value="all", command=self.toggle_inputs).pack(side=tk.LEFT, padx=6)
+        tk.Radiobutton(line2, text=T('rb_frame_range'), variable=self.mode_var, value="range", command=self.toggle_inputs).pack(side=tk.LEFT, padx=6)
+
         self.interval_lbl = tk.Label(line2, text=T('lbl_every'))
         self.interval_lbl.pack(side=tk.LEFT, padx=(5, 0))
         self.interval_entry = tk.Entry(line2, width=5)
-        self.interval_entry.insert(0, "1")
+        self.interval_entry.insert(0, settings.get('extract_interval', '1'))
         self.interval_entry.pack(side=tk.LEFT, padx=2)
-        tk.Label(line2, text=T('lbl_seconds')).pack(side=tk.LEFT)
+        self.interval_sec_lbl = tk.Label(line2, text=T('lbl_seconds'))
+        self.interval_sec_lbl.pack(side=tk.LEFT)
+
+        # Range mode: from/to frame numbers
+        self.range_from_lbl = tk.Label(line2, text=T('lbl_from_frame'))
+        self.range_from_lbl.pack(side=tk.LEFT, padx=(8, 2))
+        self.range_from_var = tk.StringVar(value=settings.get('extract_range_from', '0'))
+        self.range_from_entry = tk.Entry(line2, textvariable=self.range_from_var, width=7)
+        self.range_from_entry.pack(side=tk.LEFT, padx=2)
+        self.range_to_lbl = tk.Label(line2, text=T('lbl_to_frame'))
+        self.range_to_lbl.pack(side=tk.LEFT, padx=(4, 2))
+        self.range_to_var = tk.StringVar(value=settings.get('extract_range_to', '100'))
+        self.range_to_entry = tk.Entry(line2, textvariable=self.range_to_var, width=7)
+        self.range_to_entry.pack(side=tk.LEFT, padx=2)
 
         # Ligne 4 : Extraction frame précise
         single_frame = tk.LabelFrame(opts_frame, text=T('lbl_single_frame_section'), font=("Arial", 8))
@@ -1523,29 +1760,83 @@ class FrameExtractTab(ttk.Frame):
         self.log_text = scrolledtext.ScrolledText(main_frame, height=8)
         self.log_text.pack(fill='both', expand=True, pady=5)
 
+        # Sync toggle state from loaded settings
+        self.toggle_inputs()
+        self.toggle_path_entry()
+
+        # Restore output dir if saved
+        saved_out = settings.get('extract_out_dir', '')
+        if saved_out:
+            self.out_dir_entry.config(state='normal')
+            self.out_dir_entry.delete(0, tk.END)
+            self.out_dir_entry.insert(0, saved_out)
+            if self.auto_folder_var.get():
+                self.out_dir_entry.config(state='disabled')
+
     def toggle_path_entry(self):
         state = 'disabled' if self.auto_folder_var.get() else 'normal'
         self.out_dir_entry.config(state=state)
         self.btn_browse_out.config(state=state)
 
     def toggle_inputs(self):
-        self.interval_entry.config(state='disabled' if self.mode_var.get() == "all" else 'normal')
+        mode = self.mode_var.get()
+        # Interval controls
+        interval_state = 'normal' if mode == 'interval' else 'disabled'
+        self.interval_entry.config(state=interval_state)
+        self.interval_lbl.config(fg='black' if mode == 'interval' else 'gray')
+        self.interval_sec_lbl.config(fg='black' if mode == 'interval' else 'gray')
+        # Range controls
+        range_state = 'normal' if mode == 'range' else 'disabled'
+        self.range_from_entry.config(state=range_state)
+        self.range_to_entry.config(state=range_state)
+        self.range_from_lbl.config(fg='black' if mode == 'range' else 'gray')
+        self.range_to_lbl.config(fg='black' if mode == 'range' else 'gray')
+
+    def _load_video_file(self, f):
+        """Shared helper: load video file, set entry + auto-fill frame count."""
+        self.file_entry.delete(0, tk.END)
+        self.file_entry.insert(0, f)
+        if not self.out_dir_var.get():
+            self.out_dir_var.set(os.path.dirname(f))
+        # Auto-fill frame range in background
+        threading.Thread(target=self._autofill_frame_count, args=(f,), daemon=True).start()
+
+    def _autofill_frame_count(self, f):
+        """Fetch total frames via ffprobe and fill range_to entry."""
+        ffprobe = self.settings.get('ffprobe_path', find_ffprobe())
+        total = None
+        try:
+            cmd = [ffprobe, "-v", "error", "-select_streams", "v:0",
+                   "-show_entries", "stream=nb_frames",
+                   "-of", "default=nokey=1:noprint_wrappers=1", f]
+            out = run_hidden(cmd).stdout.strip()
+            if out.isdigit() and int(out) > 0:
+                total = int(out)
+        except Exception:
+            pass
+        if total is None:
+            try:
+                fps = self._get_fps(f)
+                dur = self._get_duration(f)
+                if fps and dur:
+                    total = max(1, int(dur * fps) - 1)
+            except Exception:
+                pass
+        if total is not None:
+            self.after(0, lambda t=total: (
+                self.range_from_var.set('0'),
+                self.range_to_var.set(str(t - 1))
+            ))
 
     def browse_file(self):
         f = filedialog.askopenfilename(filetypes=[("Video Files", "*.mkv *.mp4 *.avi *.mov *.hevc *.h265 *.264 *.h264 *.ivf *.webm *.ts")])
         if f:
-            self.file_entry.delete(0, tk.END)
-            self.file_entry.insert(0, f)
-            if not self.out_dir_var.get():
-                self.out_dir_var.set(os.path.dirname(f))
+            self._load_video_file(f)
 
     def drop_file(self, event):
         files = self.winfo_toplevel().tk.splitlist(event.data)
         if files:
-            self.file_entry.delete(0, tk.END)
-            self.file_entry.insert(0, files[0])
-            if not self.out_dir_var.get():
-                self.out_dir_var.set(os.path.dirname(files[0]))
+            self._load_video_file(files[0])
 
     def browse_out_dir(self):
         d = filedialog.askdirectory()
@@ -1562,6 +1853,21 @@ class FrameExtractTab(ttk.Frame):
     def stop_process(self):
         self.stop_event.set()
         self.after(0, lambda: self.lbl_status.config(text="Arrêt demandé..."))
+
+    def _get_fps(self, filename):
+        """Get video FPS via ffprobe."""
+        ffprobe = self.settings.get('ffprobe_path', find_ffprobe())
+        try:
+            res = run_hidden([ffprobe, "-v", "error", "-select_streams", "v:0",
+                              "-show_entries", "stream=r_frame_rate",
+                              "-of", "default=nokey=1:noprint_wrappers=1", filename])
+            val = res.stdout.strip()
+            if '/' in val:
+                num, den = val.split('/')
+                return float(num) / float(den) if float(den) != 0 else None
+            return float(val) if val else None
+        except Exception:
+            return None
 
     def _get_duration(self, filename):
         """Get duration with multiple fallback methods (supports raw HEVC/H264)."""
@@ -1663,7 +1969,8 @@ class FrameExtractTab(ttk.Frame):
             ffmpeg = self.settings.get('ffmpeg_path', find_ffmpeg())
             cmd = [ffmpeg, "-hide_banner", "-loglevel", "info", "-i", video_path]
 
-            if self.mode_var.get() == "interval":
+            mode = self.mode_var.get()
+            if mode == "interval":
                 try:
                     sec = float(self.interval_entry.get())
                     if sec <= 0:
@@ -1671,6 +1978,17 @@ class FrameExtractTab(ttk.Frame):
                 except ValueError:
                     sec = 1.0
                 cmd += ["-vf", f"fps=1/{sec}"]
+            elif mode == "range":
+                try:
+                    f_from = int(self.range_from_var.get())
+                    f_to = int(self.range_to_var.get())
+                    if f_from < 0 or f_to < f_from:
+                        raise ValueError
+                except ValueError:
+                    f_from, f_to = 0, 100
+                # select filter: extract all frames between f_from and f_to (inclusive)
+                cmd += ["-vf", f"select=between(n\\,{f_from}\\,{f_to})", "-vsync", "vfr"]
+            # mode "all": no -vf filter, extract every frame
 
             if fmt == "jpg":
                 cmd += ["-q:v", str(self.jpg_quality_var.get())]
@@ -1705,7 +2023,7 @@ class FrameExtractTab(ttk.Frame):
                 root.after(0, lambda: self.lbl_status.config(text="✅ Terminé !"))
                 self.log("Extraction terminée avec succès.")
                 root.after(0, lambda: messagebox.showinfo("Succès", f"Images extraites dans :\n{out_dir}"))
-                notify_toast(T('notif_extract_done'), T('notif_extract_body'))
+                threading.Thread(target=notify_toast, args=(T('notif_extract_done'), T('notif_extract_body')), daemon=True).start()
             elif self.stop_event.is_set():
                 root.after(0, lambda: self.lbl_status.config(text="🛑 Annulé"))
                 self.log("Processus annulé par l'utilisateur.")
@@ -1885,7 +2203,7 @@ class MediaInfoTab(ttk.Frame):
 
         self.info_tree.delete(*self.info_tree.get_children())
 
-        mkvmerge = self.settings.get('mkvmerge_path', 'mkvmerge')
+        mkvmerge = self.parent_app.mkvmerge_path_entry.get() if hasattr(self, 'parent_app') and hasattr(self.parent_app, 'mkvmerge_path_entry') else self.settings.get('mkvmerge_path', 'mkvmerge')
         try:
             res = run_hidden([mkvmerge, "-J", filepath])
             info = json.loads(res.stdout)
@@ -1983,13 +2301,11 @@ class PyMkvPropEdit:
         self.style = ttk.Style(self.root)
         self.style.theme_use('clam')
 
-        # Icon
+        # Icon — use wm_iconbitmap for proper multi-res taskbar icon
         try:
             icon_path = resolve_asset("vivi.ico")
             if os.path.exists(icon_path):
-                icon_img = Image.open(icon_path)
-                icon_photo = ImageTk.PhotoImage(icon_img)
-                self.root.iconphoto(True, icon_photo)
+                self.root.wm_iconbitmap(icon_path)
         except Exception as e:
             logger.warning(f"Icon load failed: {e}")
 
@@ -1999,9 +2315,19 @@ class PyMkvPropEdit:
         self.settings = self.load_settings()
         self.presets = self.load_presets()
 
-        self.window_width = self.settings.get('window_width', 900)
-        self.window_height = self.settings.get('window_height', 650)
-        self.root.geometry(f"{self.window_width}x{self.window_height}")
+        # Window size: 1450×920 centered on first launch, restore saved size after
+        self.window_width = self.settings.get('window_width', 1450)
+        self.window_height = self.settings.get('window_height', 920)
+        if 'window_width' not in self.settings:
+            # Center on screen for first launch
+            self.root.update_idletasks()
+            sw = self.root.winfo_screenwidth()
+            sh = self.root.winfo_screenheight()
+            x = (sw - self.window_width) // 2
+            y = (sh - self.window_height) // 2
+            self.root.geometry(f"{self.window_width}x{self.window_height}+{x}+{y}")
+        else:
+            self.root.geometry(f"{self.window_width}x{self.window_height}")
 
         self.theme = self.settings.get('theme', 'light')
         self.save_tracks_var = tk.BooleanVar(value=self.settings.get('save_tracks', True))
@@ -2010,6 +2336,15 @@ class PyMkvPropEdit:
         self.delete_tags_var = tk.BooleanVar(value=self.settings.get('delete_tags', False))
         self.custom_numbering_var = tk.BooleanVar(value=self.settings.get('custom_numbering', False))
         self.chapters_remove_var = tk.BooleanVar(value=self.settings.get('chapters_remove', False))
+        self.notifications_var = tk.BooleanVar(value=self.settings.get('notifications', True))
+
+        # Sync global notifications flag from settings
+        global _notifications_enabled
+        _notifications_enabled = self.notifications_var.get()
+
+        # Pre-load summary images in background (avoid freeze on first use)
+        self._summary_img_cache: dict = {}
+        self._preload_summary_images()
 
         self.apply_theme(self.theme)
         self.languages = LANGUAGES
@@ -2059,63 +2394,143 @@ class PyMkvPropEdit:
             self._show_mkvtools_wizard()
 
     def _show_mkvtools_wizard(self):
-        """First-launch dialog: choose system MKVToolNix vs bundled."""
+        """First-launch dialog: choose language + system vs bundled MKVToolNix."""
         bundled_dir = os.path.join(_ASSET_DIR, 'mkvtools')
         bundled_available = (
             os.path.isdir(bundled_dir) and
             os.path.exists(os.path.join(bundled_dir, 'mkvpropedit.exe'))
         )
 
+        # Scan ffmpeg before showing dialog (fast enough)
+        ffmpeg_installs = _scan_ffmpeg_installs()
+
         dlg = tk.Toplevel(self.root)
         dlg.title(T('wizard_title'))
-        dlg.geometry("540x330")
+        dlg.geometry("580x600")
         dlg.resizable(False, False)
         dlg.grab_set()
         dlg.transient(self.root)
         dlg.update_idletasks()
-        x = (dlg.winfo_screenwidth() - 540) // 2
-        y = (dlg.winfo_screenheight() - 330) // 2
-        dlg.geometry(f"540x330+{x}+{y}")
+        x = (dlg.winfo_screenwidth() - 580) // 2
+        y = (dlg.winfo_screenheight() - 600) // 2
+        dlg.geometry(f"580x600+{x}+{y}")
 
         # Set icon
         try:
             icon_path = resolve_asset("vivi.ico")
             if os.path.exists(icon_path):
-                _wiz_img = Image.open(icon_path)
-                _wiz_photo = ImageTk.PhotoImage(_wiz_img)
-                dlg.iconphoto(True, _wiz_photo)
+                dlg.wm_iconbitmap(icon_path)
         except Exception:
             pass
 
-        choice_var = tk.StringVar(value='system')
-
         tk.Label(dlg, text="⚙️  " + T('wizard_title'),
-                 font=('Arial', 12, 'bold')).pack(pady=14)
+                 font=('Arial', 13, 'bold')).pack(pady=12)
+
+        # ── Language section ──────────────────────────────────────────
+        tk.Label(dlg, text=T('wizard_lang_section'),
+                 font=('Arial', 10, 'bold')).pack(pady=(4, 0))
+        lang_frame = tk.Frame(dlg, bd=1, relief='groove')
+        lang_frame.pack(pady=4, padx=24, fill='x')
+
+        wizard_lang_var = tk.StringVar(value=LANG)
+        ttk.Radiobutton(lang_frame, text="Français 🇫🇷",
+                         variable=wizard_lang_var, value='fr').pack(
+            side=tk.LEFT, padx=30, pady=10)
+        ttk.Radiobutton(lang_frame, text="English 🇬🇧",
+                         variable=wizard_lang_var, value='en').pack(
+            side=tk.LEFT, padx=30, pady=10)
+
+        # ── MKVToolNix section ────────────────────────────────────────
+        tk.Label(dlg, text=T('wizard_mkv_section'),
+                 font=('Arial', 10, 'bold')).pack(pady=(10, 0))
         tk.Label(dlg, text=T('wizard_msg'), font=('Arial', 10)).pack(pady=2)
 
-        frame = tk.Frame(dlg, bd=1, relief='groove')
-        frame.pack(pady=8, padx=24, fill='x')
+        mkv_frame = tk.Frame(dlg, bd=1, relief='groove')
+        mkv_frame.pack(pady=4, padx=24, fill='x')
+
+        choice_var = tk.StringVar(value='system')
 
         tk.Radiobutton(
-            frame, text=T('wizard_system'),
+            mkv_frame, text=T('wizard_system'),
             variable=choice_var, value='system',
             justify='left', font=('Arial', 10)
         ).pack(anchor='w', padx=16, pady=8)
 
         rb_bnd = tk.Radiobutton(
-            frame, text=T('wizard_bundled'),
+            mkv_frame, text=T('wizard_bundled'),
             variable=choice_var, value='bundled',
             justify='left', font=('Arial', 10),
             state='normal' if bundled_available else 'disabled'
         )
-        rb_bnd.pack(anchor='w', padx=16, pady=8)
+        rb_bnd.pack(anchor='w', padx=16, pady=6)
         if not bundled_available:
-            tk.Label(frame, text=T('wizard_bundled_unavail'),
-                     fg='gray', font=('Arial', 8, 'italic')).pack(anchor='w', padx=40)
+            tk.Label(mkv_frame, text=T('wizard_bundled_unavail'),
+                     fg='gray', font=('Arial', 8, 'italic')).pack(anchor='w', padx=40, pady=(0, 6))
+
+        # ── FFmpeg section ────────────────────────────────────────────────
+        tk.Label(dlg, text=T('wizard_ffmpeg_section'),
+                 font=('Arial', 10, 'bold')).pack(pady=(10, 0))
+
+        ffmpeg_frame = tk.Frame(dlg, bd=1, relief='groove')
+        ffmpeg_frame.pack(pady=4, padx=24, fill='x')
+
+        ffmpeg_sel_var = tk.StringVar()
+
+        if ffmpeg_installs:
+            tk.Label(ffmpeg_frame, text=T('wizard_ffmpeg_found'),
+                     font=('Arial', 9)).pack(anchor='w', padx=8, pady=(6, 2))
+
+            lb_frame = tk.Frame(ffmpeg_frame)
+            lb_frame.pack(fill='x', padx=8, pady=(0, 6))
+            lb_scroll_y = tk.Scrollbar(lb_frame, orient='vertical')
+            lb_scroll_x = tk.Scrollbar(lb_frame, orient='horizontal')
+            ffmpeg_lb = tk.Listbox(lb_frame, height=min(len(ffmpeg_installs), 4),
+                                    yscrollcommand=lb_scroll_y.set,
+                                    xscrollcommand=lb_scroll_x.set,
+                                    font=('Consolas', 8),
+                                    selectmode='single', activestyle='dotbox')
+            lb_scroll_y.config(command=ffmpeg_lb.yview)
+            lb_scroll_x.config(command=ffmpeg_lb.xview)
+            lb_scroll_y.pack(side='right', fill='y')
+            lb_scroll_x.pack(side='bottom', fill='x')
+            ffmpeg_lb.pack(side='left', fill='both', expand=True)
+
+            for inst in ffmpeg_installs:
+                ffmpeg_lb.insert(tk.END, inst['label'])
+            ffmpeg_lb.selection_set(0)
+            ffmpeg_sel_var.set(ffmpeg_installs[0]['path'])
+
+            def on_lb_select(evt):
+                sel = ffmpeg_lb.curselection()
+                if sel:
+                    ffmpeg_sel_var.set(ffmpeg_installs[sel[0]]['path'])
+
+            ffmpeg_lb.bind('<<ListboxSelect>>', on_lb_select)
+        else:
+            tk.Label(ffmpeg_frame, text=T('wizard_ffmpeg_none'),
+                     fg='gray', font=('Arial', 9, 'italic')).pack(padx=8, pady=6)
+            ffmpeg_lb = None
+
+        def browse_wizard_ffmpeg():
+            p = filedialog.askopenfilename(
+                title="ffmpeg.exe",
+                filetypes=[("ffmpeg", "ffmpeg.exe"), ("All", "*.*")]
+            )
+            if p:
+                ffmpeg_sel_var.set(p)
+                if ffmpeg_lb is not None:
+                    ffmpeg_lb.selection_clear(0, tk.END)
+
+        tk.Button(ffmpeg_frame, text=T('wizard_ffmpeg_browse'),
+                  command=browse_wizard_ffmpeg,
+                  bg='#555577', fg='white', font=('Arial', 9)).pack(padx=8, pady=(0, 8))
 
         def on_confirm():
             source = choice_var.get()
+            chosen_lang = wizard_lang_var.get()
             self.settings['mkvtools_source'] = source
+            self.settings['language'] = chosen_lang
+
             if source == 'bundled' and bundled_available:
                 bp = os.path.join(bundled_dir, 'mkvpropedit.exe')
                 bm = os.path.join(bundled_dir, 'mkvmerge.exe')
@@ -2124,20 +2539,98 @@ class PyMkvPropEdit:
                 self.mkvmerge_path_entry.delete(0, tk.END)
                 self.mkvmerge_path_entry.insert(0, bm)
             else:
-                sp = shutil.which('mkvpropedit') or 'mkvpropedit'
-                sm = shutil.which('mkvmerge') or 'mkvmerge'
+                sp = find_system_mkv_tool('mkvpropedit')
+                sm = find_system_mkv_tool('mkvmerge')
                 self.mkvpropedit_path_entry.delete(0, tk.END)
                 self.mkvpropedit_path_entry.insert(0, sp)
                 self.mkvmerge_path_entry.delete(0, tk.END)
                 self.mkvmerge_path_entry.insert(0, sm)
+
+            # Apply FFmpeg selection
+            sel_ff = ffmpeg_sel_var.get()
+            if sel_ff and os.path.isfile(sel_ff):
+                self.ffmpeg_path_entry.delete(0, tk.END)
+                self.ffmpeg_path_entry.insert(0, sel_ff)
+                # Derive ffprobe from same dir
+                ff_dir = os.path.dirname(sel_ff)
+                ffprobe_candidate = os.path.join(ff_dir, 'ffprobe.exe')
+                if os.path.isfile(ffprobe_candidate):
+                    self.ffprobe_path_entry.delete(0, tk.END)
+                    self.ffprobe_path_entry.insert(0, ffprobe_candidate)
+
             self.save_settings()
             dlg.destroy()
 
+            # Restart if language changed
+            if chosen_lang != LANG:
+                messagebox.showinfo(
+                    "Restart / Redémarrage",
+                    T('wizard_restart_needed')
+                )
+                self.root.destroy()
+
         tk.Button(dlg, text=T('wizard_confirm'), command=on_confirm,
                   bg='#008000', fg='white', font=('Arial', 10, 'bold'),
-                  width=14, pady=4).pack(pady=14)
+                  width=14, pady=4).pack(pady=12)
 
         self.root.wait_window(dlg)
+
+    def _switch_to_bundled_mkv(self):
+        """Options button: switch to bundled MKVToolNix."""
+        bundled_dir = os.path.join(_ASSET_DIR, 'mkvtools')
+        if not (os.path.isdir(bundled_dir) and
+                os.path.exists(os.path.join(bundled_dir, 'mkvpropedit.exe'))):
+            messagebox.showwarning("MKVToolNix", T('msg_no_bundled'))
+            return
+        bp = os.path.join(bundled_dir, 'mkvpropedit.exe')
+        bm = os.path.join(bundled_dir, 'mkvmerge.exe')
+        self.mkvpropedit_path_entry.delete(0, tk.END)
+        self.mkvpropedit_path_entry.insert(0, bp)
+        self.mkvmerge_path_entry.delete(0, tk.END)
+        self.mkvmerge_path_entry.insert(0, bm)
+        self.settings['mkvtools_source'] = 'bundled'
+        self.save_settings()
+        messagebox.showinfo("MKVToolNix", T('msg_switched_bundled'))
+
+    def _switch_to_system_mkv(self):
+        """Options button: switch to system MKVToolNix."""
+        sp = find_system_mkv_tool('mkvpropedit')
+        sm = find_system_mkv_tool('mkvmerge')
+        self.mkvpropedit_path_entry.delete(0, tk.END)
+        self.mkvpropedit_path_entry.insert(0, sp)
+        self.mkvmerge_path_entry.delete(0, tk.END)
+        self.mkvmerge_path_entry.insert(0, sm)
+        self.settings['mkvtools_source'] = 'system'
+        self.save_settings()
+
+    def _preload_summary_images(self):
+        """Preload success/warning/failure background images in a background thread."""
+        win_w, win_h = 450, 350
+
+        def _load():
+            cache = {}
+            for img_name in ('success.jpg', 'warning.jpg', 'failure.jpg'):
+                try:
+                    p = resolve_asset(img_name)
+                    if os.path.exists(p):
+                        img = Image.open(p).resize(
+                            (win_w, win_h), Image.Resampling.LANCZOS
+                        ).convert("RGBA")
+                        alpha = img.split()[3].point(lambda v: v * 60 // 100)
+                        img.putalpha(alpha)
+                        cache[img_name] = img
+                except Exception as e:
+                    logger.debug(f"Preload {img_name} failed: {e}")
+            self.root.after(0, lambda: self._summary_img_cache.update(cache))
+
+        threading.Thread(target=_load, daemon=True).start()
+
+    def _on_notifications_toggle(self):
+        """Checkbox callback: sync global flag and save settings."""
+        global _notifications_enabled
+        _notifications_enabled = self.notifications_var.get()
+        self.settings['notifications'] = _notifications_enabled
+        self.save_settings()
 
     def _update_status_bar(self):
         """Update the status bar with file count."""
@@ -2199,6 +2692,18 @@ class PyMkvPropEdit:
             'ffmpeg_path': self.ffmpeg_path_entry.get(),
             'ffprobe_path': self.ffprobe_path_entry.get(),
             'language': self.language_var.get() if hasattr(self, 'language_var') else LANG,
+            'mkvtools_source': self.settings.get('mkvtools_source', 'system'),
+            'notifications': self.notifications_var.get() if hasattr(self, 'notifications_var') else True,
+            # Frame extraction tab settings
+            'extract_format': self.extract_frames_app.format_var.get() if hasattr(self, 'extract_frames_app') else 'jpg',
+            'extract_mode': self.extract_frames_app.mode_var.get() if hasattr(self, 'extract_frames_app') else 'interval',
+            'extract_interval': self.extract_frames_app.interval_entry.get() if hasattr(self, 'extract_frames_app') else '1',
+            'extract_jpg_quality': self.extract_frames_app.jpg_quality_var.get() if hasattr(self, 'extract_frames_app') else 2,
+            'extract_png_compression': self.extract_frames_app.png_compression_var.get() if hasattr(self, 'extract_frames_app') else 5,
+            'extract_auto_folder': self.extract_frames_app.auto_folder_var.get() if hasattr(self, 'extract_frames_app') else True,
+            'extract_out_dir': self.extract_frames_app.out_dir_entry.get() if hasattr(self, 'extract_frames_app') else '',
+            'extract_range_from': self.extract_frames_app.range_from_var.get() if hasattr(self, 'extract_frames_app') else '0',
+            'extract_range_to': self.extract_frames_app.range_to_var.get() if hasattr(self, 'extract_frames_app') else '100',
         }
         if self.save_tracks_var.get():
             settings['audio_tracks'] = self._save_tracks(self.audio_frames)
@@ -2207,6 +2712,8 @@ class PyMkvPropEdit:
         try:
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=4)
+            # Keep in-memory dict in sync so sub-tabs (AudioSync, etc.) see updated paths
+            self.settings.update(settings)
             logger.info("Settings saved.")
         except Exception as e:
             logger.error(f"Settings save failed: {e}")
@@ -2567,13 +3074,23 @@ class PyMkvPropEdit:
         tk.Label(self.options_tab, text=T('lbl_mkvpropedit_path')).pack(pady=10)
         self.mkvpropedit_path_entry = tk.Entry(self.options_tab, width=50)
         self.mkvpropedit_path_entry.pack(pady=10)
-        self.mkvpropedit_path_entry.insert(0, self.settings.get('mkvpropedit_path', shutil.which('mkvpropedit') or 'mkvpropedit'))
+        self.mkvpropedit_path_entry.insert(0, self.settings.get('mkvpropedit_path', find_system_mkv_tool('mkvpropedit')))
         tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_mkvpropedit, bg='#008000', fg='white').pack(pady=5)
         tk.Label(self.options_tab, text=T('lbl_mkvmerge_path')).pack(pady=10)
         self.mkvmerge_path_entry = tk.Entry(self.options_tab, width=50)
         self.mkvmerge_path_entry.pack(pady=10)
-        self.mkvmerge_path_entry.insert(0, self.settings.get('mkvmerge_path', shutil.which('mkvmerge') or 'mkvmerge'))
+        self.mkvmerge_path_entry.insert(0, self.settings.get('mkvmerge_path', find_system_mkv_tool('mkvmerge')))
         tk.Button(self.options_tab, text=T('btn_browse'), command=self.browse_mkvmerge, bg='#008000', fg='white').pack(pady=5)
+
+        # Quick-switch bundled/system MKVToolNix
+        mkv_switch_frame = tk.Frame(self.options_tab)
+        mkv_switch_frame.pack(pady=(0, 6))
+        tk.Button(mkv_switch_frame, text=T('btn_use_bundled'),
+                  command=self._switch_to_bundled_mkv,
+                  bg='#555577', fg='white', font=('Arial', 9)).pack(side=tk.LEFT, padx=4)
+        tk.Button(mkv_switch_frame, text=T('btn_use_system'),
+                  command=self._switch_to_system_mkv,
+                  bg='#555577', fg='white', font=('Arial', 9)).pack(side=tk.LEFT, padx=4)
 
         tk.Label(self.options_tab, text=T('lbl_ffmpeg_path')).pack(pady=10)
         self.ffmpeg_path_entry = tk.Entry(self.options_tab, width=50)
@@ -2603,6 +3120,9 @@ class PyMkvPropEdit:
         tk.Label(self.options_tab, text=T('lbl_restart_required'), fg='gray', font=("Arial", 9, "italic")).pack()
 
         ttk.Checkbutton(self.options_tab, text=T('lbl_save_tracks'), variable=self.save_tracks_var).pack(pady=10)
+        ttk.Checkbutton(self.options_tab, text=T('lbl_notifications'),
+                         variable=self.notifications_var,
+                         command=self._on_notifications_toggle).pack(pady=4)
 
         # [NEW] Export/Import buttons
         io_frame = tk.Frame(self.options_tab)
@@ -2957,8 +3477,8 @@ class PyMkvPropEdit:
             if frame['edit_var'].get():
                 track_cmd = ["--edit", f"track:{track_prefix}{i}"]
                 name = sanitize_input(frame['name_entry'].get())
-                if name:
-                    track_cmd += ["--set", f"name={name}"]
+                # Always set name when track edit is checked (empty string clears old name)
+                track_cmd += ["--set", f"name={name}"]
                 lang = frame['lang_combo'].get().split()[0]
                 if lang:
                     track_cmd += ["--set", f"language={lang}"]
@@ -3070,7 +3590,7 @@ class PyMkvPropEdit:
             return True
 
     def _apply_chapter_names(self, file):
-        mkvextract_path = shutil.which('mkvextract') or 'mkvextract'
+        mkvextract_path = self.settings.get('mkvextract_path') or find_system_mkv_tool('mkvextract')
         temp_orig_xml = None
         try:
             result_extract = run_hidden([mkvextract_path, "chapters", file])
@@ -3135,6 +3655,19 @@ class PyMkvPropEdit:
         start_num = self.validate_numeric_input(self.general_start_num_entry, "Starting Number")
         padding = self.validate_numeric_input(self.general_padding_entry, "Padding")
         mkvpropedit = self.mkvpropedit_path_entry.get()
+
+        # ── Validate tool paths upfront ────────────────────────────────────
+        mkv_ok = os.path.isfile(mkvpropedit) or shutil.which(mkvpropedit)
+        if not mkv_ok:
+            messagebox.showerror(
+                "mkvpropedit introuvable" if LANG == 'fr' else "mkvpropedit not found",
+                f"mkvpropedit non trouvé :\n{mkvpropedit}\n\n"
+                "Vérifiez le chemin dans l'onglet Options."
+                if LANG == 'fr' else
+                f"mkvpropedit not found:\n{mkvpropedit}\n\n"
+                "Check the path in the Options tab."
+            )
+            return
 
         files = list(self.file_list.get(0, tk.END))
         if not files:
@@ -3203,36 +3736,87 @@ class PyMkvPropEdit:
 
             tasks.append((file, cmd, chapters_file, temp_xml))
 
-        initial_progress = self.progress['value']
-        threading.Thread(
-            target=self._execute_tasks,
-            args=(tasks, skipped_errors, start_time, initial_progress),
-            daemon=True
-        ).start()
+        # Sequential one-at-a-time pipeline for incremental progress bar
+        self._proc_state = {
+            'tasks': list(tasks),
+            'done': self.progress['value'],   # count of already-skipped files
+            'total': len(files),              # total files in list
+            'task_count': len(tasks),         # tasks to actually run
+            'successes': [],
+            'errors': list(skipped_errors),
+            'start_time': start_time,
+            'file_times': [],                 # elapsed time per file, for ETA
+        }
+        self.root.after(0, self._run_next_task)
 
-    def _execute_tasks(self, tasks, initial_errors, start_time, initial_progress):
-        successes = []
-        errors = list(initial_errors)
-        progress_val = initial_progress
+    def _run_next_task(self):
+        """Main-thread: launch next task in a background thread."""
+        st = self._proc_state
+        if self.cancel_processing or not st['tasks']:
+            self._finish_batch()
+            return
 
-        for task in tasks:
-            if self.cancel_processing:
-                break
+        task = st['tasks'].pop(0)
+        current = st['done'] + 1
+        total = st['total']
+
+        # Status bar: counter + ETA
+        if st['file_times']:
+            avg = sum(st['file_times']) / len(st['file_times'])
+            remaining = len(st['tasks'])        # files still queued
+            eta_s = int(avg * remaining)
+            m, s = divmod(eta_s, 60)
+            eta_str = f" — ETA {m}m{s:02d}s" if m else f" — ETA {s}s"
+        else:
+            eta_str = ""
+        self.status_bar.config(
+            text=f"Traitement {current}/{total}{eta_str}  ·  "
+                 f"{total - current} restant(s)" if LANG == 'fr'
+            else f"Processing {current}/{total}{eta_str}  ·  "
+                 f"{total - current} remaining"
+        )
+
+        file_start = time.time()
+
+        def _run():
             result = self.process_file(task)
-            file, output, success = result
-            progress_val += 1
-            pv = progress_val
-            self.after(0, lambda o=output, v=pv: self._update_execute_ui(o, v))
-            if success:
-                successes.append(file)
-            else:
-                errors.append(os.path.basename(file))
+            elapsed = time.time() - file_start
+            self.root.after(0, lambda r=result, e=elapsed: self._on_task_done(r, e))
 
-        end_time = time.time()
-        total_seconds = end_time - start_time
-        self.after(0, self._update_status_bar)
-        self.after(0, lambda s=list(successes), e=list(errors), t=total_seconds: self.show_summary_window(s, e, t))
-        notify_toast(T('notif_batch_done'), T('notif_batch_body').format(s=len(successes), e=len(errors)))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_task_done(self, result, elapsed):
+        """Main-thread: called after each file completes."""
+        st = self._proc_state
+        file, output, success = result
+
+        st['file_times'].append(elapsed)
+        st['done'] += 1
+
+        if success:
+            st['successes'].append(file)
+        else:
+            st['errors'].append(os.path.basename(file))
+
+        # Update output + progress bar
+        self.output_text.insert(tk.END, output)
+        self.output_text.see(tk.END)
+        self.progress.configure(value=st['done'])
+        self.root.update_idletasks()
+
+        # Schedule next file (small delay so UI renders)
+        self.root.after(20, self._run_next_task)
+
+    def _finish_batch(self):
+        """Main-thread: all files done."""
+        st = self._proc_state
+        total_seconds = time.time() - st['start_time']
+        self._update_status_bar()
+        # Run toast in background so it never blocks the summary window
+        title = T('notif_batch_done')
+        body = T('notif_batch_body').format(s=len(st['successes']), e=len(st['errors']))
+        threading.Thread(target=notify_toast, args=(title, body), daemon=True).start()
+        self.show_summary_window(st['successes'], st['errors'], total_seconds)
 
     def _update_execute_ui(self, output, progress_val):
         self.output_text.insert(tk.END, output)
@@ -3251,7 +3835,7 @@ class PyMkvPropEdit:
 
     def show_summary_window(self, successes, errors, total_seconds):
         summary_window = tk.Toplevel(self.root)
-        summary_window.title("Résumé du Traitement")
+        summary_window.title(T('summary_title'))
         summary_window.transient(self.root)
         summary_window.grab_set()
         win_w, win_h = 450, 350
@@ -3259,36 +3843,60 @@ class PyMkvPropEdit:
         pos_y = self.root.winfo_rooty() + (self.root.winfo_height() - win_h) // 2
         summary_window.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
 
+        try:
+            icon_path = resolve_asset("vivi.ico")
+            if os.path.exists(icon_path):
+                summary_window.wm_iconbitmap(icon_path)
+        except Exception:
+            pass
+
         canvas = tk.Canvas(summary_window, highlightthickness=0, borderwidth=0)
         canvas.pack(fill='both', expand=True)
 
-        # Try to load background
+        # Use pre-loaded cached image (no freeze) or fallback to inline load
         img_name = "success.jpg" if not errors else ("warning.jpg" if successes else "failure.jpg")
-        try:
-            img_path = resolve_asset(img_name)
-            if os.path.exists(img_path):
-                image = Image.open(img_path).resize((win_w, win_h), Image.Resampling.LANCZOS).convert("RGBA")
-                alpha = image.split()[3].point(lambda p: p * 0.6)
-                image.putalpha(alpha)
-                self.summary_image = ImageTk.PhotoImage(image)
-                canvas.create_image(win_w // 2, win_h // 2, image=self.summary_image, anchor='center')
-        except Exception as e:
-            logger.debug(f"Summary image load failed: {e}")
+        caption = T('summary_caption_success') if not errors else (
+            T('summary_caption_warning') if successes else T('summary_caption_failure'))
+
+        pil_img = self._summary_img_cache.get(img_name)
+        if pil_img is None:
+            # Fallback: load inline if cache not ready yet
+            try:
+                p = resolve_asset(img_name)
+                if os.path.exists(p):
+                    pil_img = Image.open(p).resize(
+                        (win_w, win_h), Image.Resampling.LANCZOS
+                    ).convert("RGBA")
+                    alpha = pil_img.split()[3].point(lambda v: v * 60 // 100)
+                    pil_img.putalpha(alpha)
+            except Exception as e:
+                logger.debug(f"Summary image load failed: {e}")
+
+        if pil_img is not None:
+            self.summary_image = ImageTk.PhotoImage(pil_img)
+            canvas.create_image(win_w // 2, win_h // 2, image=self.summary_image, anchor='center')
 
         y_pos = 20
-        canvas.create_text(win_w // 2, y_pos, text="Résumé du Traitement", font=("Arial", 14, "bold"), anchor='center')
+        canvas.create_text(win_w // 2, y_pos, text=T('summary_title'),
+                            font=("Arial", 14, "bold"), anchor='center')
         y_pos += 40
-        canvas.create_text(win_w // 2, y_pos, text=f"Succès : {len(successes)}", font=("Arial", 12, "bold"), fill='#00AA00', anchor='center')
+        canvas.create_text(win_w // 2, y_pos,
+                            text=f"{T('summary_success')} : {len(successes)}",
+                            font=("Arial", 12, "bold"), fill='#00CC00', anchor='center')
         y_pos += 25
-        canvas.create_text(win_w // 2, y_pos, text=f"Erreurs : {len(errors)}", font=("Arial", 12, "bold"), fill='#FF0000', anchor='center')
+        canvas.create_text(win_w // 2, y_pos,
+                            text=f"{T('summary_errors')} : {len(errors)}",
+                            font=("Arial", 12, "bold"), fill='#FF3333', anchor='center')
         y_pos += 25
-        canvas.create_text(win_w // 2, y_pos, text=f"Durée : {self.format_time(total_seconds)}", font=("Arial", 12, "italic"), anchor='center')
+        canvas.create_text(win_w // 2, y_pos,
+                            text=f"{T('summary_duration')} : {self.format_time(total_seconds)}",
+                            font=("Arial", 12, "italic"), anchor='center')
         y_pos += 50
 
         if errors:
             def show_errors():
                 ew = tk.Toplevel(summary_window)
-                ew.title("Fichiers en Erreur")
+                ew.title(T('summary_errors_title'))
                 ew.transient(summary_window)
                 et = tk.Text(ew, height=10, width=80)
                 for ef in errors:
@@ -3297,11 +3905,13 @@ class PyMkvPropEdit:
                 et.pack(fill='both', expand=True, padx=5, pady=5)
                 tk.Button(ew, text="OK", command=ew.destroy).pack(pady=5)
 
-            error_btn = tk.Button(summary_window, text="Voir les erreurs", command=show_errors, bg='#FF4500', fg='white')
+            error_btn = tk.Button(summary_window, text=T('summary_see_errors'),
+                                  command=show_errors, bg='#FF4500', fg='white')
             canvas.create_window(win_w // 2, y_pos, window=error_btn, anchor='center')
             y_pos += 40
 
-        ok_btn = tk.Button(summary_window, text="OK", command=summary_window.destroy, bg='#008000', fg='white', width=10)
+        ok_btn = tk.Button(summary_window, text="OK", command=summary_window.destroy,
+                           bg='#008000', fg='white', width=10)
         canvas.create_window(win_w // 2, y_pos, window=ok_btn, anchor='center')
 
     def on_close(self):
@@ -3314,6 +3924,9 @@ class PyMkvPropEdit:
 # ============================================================================
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()  # Required for PyInstaller frozen builds
+    logger.info(f"PyMkvPropEdit v{VERSION} starting...")
     try:
         if TkinterDnD is not None:
             root = TkinterDnD.Tk()
