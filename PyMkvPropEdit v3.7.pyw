@@ -355,6 +355,7 @@ STRINGS: dict = {
         'bp_pick_match': 'Sélectionner la correspondance',
         'bp_col_track': 'Piste', 'bp_col_type': 'Type', 'bp_col_lang': 'Langue',
         'bp_col_name_tr': 'Nom', 'bp_col_forced': 'Forcé',
+        'bp_col_codec': 'Codec', 'bp_col_default': 'Défaut',
         'lbl_tvdb_key': 'Clé API TheTVDB :',
         'lbl_tmdb_key': 'Clé API TMDB :',
     },
@@ -531,6 +532,7 @@ STRINGS: dict = {
         'bp_pick_match': 'Select match',
         'bp_col_track': 'Track', 'bp_col_type': 'Type', 'bp_col_lang': 'Language',
         'bp_col_name_tr': 'Name', 'bp_col_forced': 'Forced',
+        'bp_col_codec': 'Codec', 'bp_col_default': 'Default',
         'lbl_tvdb_key': 'TheTVDB API key:',
         'lbl_tmdb_key': 'TMDB API key:',
     }
@@ -919,6 +921,38 @@ def _normalize_codec(codec_id, codec_name):
         return 'VP9'
     if 'MPEG2' in c:
         return 'MPEG2'
+    # --- audio ---
+    if 'TRUEHD' in c or 'TRUE-HD' in c:
+        return 'TrueHD'
+    if 'E-AC-3' in c or 'EAC3' in c or 'EC-3' in c:
+        return 'EAC3'
+    if 'AC-3' in c or 'A_AC3' in c or 'AC3' in c:
+        return 'AC3'
+    if 'DTS-HD' in c or 'DTSHD' in c:
+        return 'DTS-HD'
+    if 'DTS' in c:
+        return 'DTS'
+    if 'AAC' in c:
+        return 'AAC'
+    if 'FLAC' in c:
+        return 'FLAC'
+    if 'OPUS' in c:
+        return 'Opus'
+    if 'VORBIS' in c:
+        return 'Vorbis'
+    if 'MP3' in c or 'MPEG/L3' in c:
+        return 'MP3'
+    if 'PCM' in c:
+        return 'PCM'
+    # --- subtitles ---
+    if 'PGS' in c or 'HDMV' in c:
+        return 'PGS'
+    if 'S_TEXT/ASS' in c or 'SSA' in c or 'ASS' in c:
+        return 'ASS'
+    if 'S_TEXT/UTF8' in c or 'SRT' in c or 'SUBRIP' in c:
+        return 'SRT'
+    if 'VOBSUB' in c or 'S_VOBSUB' in c:
+        return 'VobSub'
     return codec_name or ''
 
 
@@ -3658,18 +3692,22 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
         tt_frame = tk.Frame(sec3)
         tt_frame.pack(fill='both', expand=True, pady=2)
-        tcols = ('track', 'type', 'lang', 'name', 'forced')
+        tcols = ('track', 'type', 'codec', 'lang', 'name', 'forced', 'default')
         self.track_tree = ttk.Treeview(tt_frame, columns=tcols, show='headings', height=5)
         self.track_tree.heading('track', text=T('bp_col_track'))
         self.track_tree.heading('type', text=T('bp_col_type'))
+        self.track_tree.heading('codec', text=T('bp_col_codec'))
         self.track_tree.heading('lang', text=T('bp_col_lang'))
         self.track_tree.heading('name', text=T('bp_col_name_tr'))
         self.track_tree.heading('forced', text=T('bp_col_forced'))
-        self.track_tree.column('track', width=50, anchor='center')
-        self.track_tree.column('type', width=90, anchor='center')
-        self.track_tree.column('lang', width=70, anchor='center')
-        self.track_tree.column('name', width=300)
-        self.track_tree.column('forced', width=60, anchor='center')
+        self.track_tree.heading('default', text=T('bp_col_default'))
+        self.track_tree.column('track', width=45, anchor='center')
+        self.track_tree.column('type', width=80, anchor='center')
+        self.track_tree.column('codec', width=70, anchor='center')
+        self.track_tree.column('lang', width=60, anchor='center')
+        self.track_tree.column('name', width=240)
+        self.track_tree.column('forced', width=55, anchor='center')
+        self.track_tree.column('default', width=60, anchor='center')
         self.track_tree.pack(side='left', fill='both', expand=True)
         sb3 = ttk.Scrollbar(tt_frame, orient='vertical', command=self.track_tree.yview)
         sb3.pack(side='right', fill='y')
@@ -3699,13 +3737,18 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         srow2 = tk.Frame(sec4)
         srow2.pack(fill='x', pady=1)
         tk.Label(srow2, text=T('lbl_ref_lang')).pack(side='left')
-        self.bp_ref_lang_var = tk.StringVar(value=settings.get('bp_ref_lang', 'jpn'))
-        tk.Entry(srow2, textvariable=self.bp_ref_lang_var, width=5).pack(side='left', padx=5)
+        # Map a saved code or label to a full LANGUAGES label
+        _saved_ref = settings.get('bp_ref_lang', 'jpn')
+        _ref_label = next((l for l in LANGUAGES if l.split()[0] == _saved_ref.split()[0]),
+                          'jpn (Japanese)')
+        self.bp_ref_lang_var = tk.StringVar(value=_ref_label)
+        ttk.Combobox(srow2, textvariable=self.bp_ref_lang_var, values=LANGUAGES,
+                     state='readonly', width=16).pack(side='left', padx=5)
         tk.Label(srow2, text=T('lbl_duration')).pack(side='left', padx=(10, 0))
-        self.bp_duration_var = tk.StringVar(value=settings.get('audio_sync_duration', "120"))
+        self.bp_duration_var = tk.StringVar(value=settings.get('bp_duration', settings.get('audio_sync_duration', "120")))
         tk.Entry(srow2, textvariable=self.bp_duration_var, width=5).pack(side='left', padx=5)
         tk.Label(srow2, text=T('lbl_batch_start')).pack(side='left', padx=(10, 0))
-        self.bp_start_var = tk.StringVar(value=settings.get('audio_sync_start', "300"))
+        self.bp_start_var = tk.StringVar(value=settings.get('bp_start', settings.get('audio_sync_start', "300")))
         tk.Entry(srow2, textvariable=self.bp_start_var, width=5).pack(side='left', padx=5)
 
         out_row = tk.Frame(sec4)
@@ -3983,9 +4026,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tracks.append({
                     'id': t['id'],
                     'type': t['type'],
+                    'codec': _normalize_codec(props.get('codec_id', ''), t.get('codec', '')),
                     'lang': props.get('language', 'und'),
                     'name': props.get('track_name', ''),
                     'forced': bool(props.get('forced_track', False)),
+                    'default': bool(props.get('default_track', False)),
                 })
             return tracks
         except Exception as e:
@@ -4006,8 +4051,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.delete(*self.track_tree.get_children())
         for t in tracks:
             self.track_tree.insert('', 'end', iid=str(t['id']),
-                                   values=(t['id'], t['type'], t['lang'], t['name'],
-                                           '✓' if t['forced'] else ''))
+                                   values=(t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
+                                           '✓' if t['forced'] else '',
+                                           '✓' if t.get('default') else ''))
 
     def _load_ref_tracks(self):
         f = filedialog.askopenfilename(filetypes=[("MKV Files", "*.mkv")])
@@ -4017,8 +4063,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.delete(*self.track_tree.get_children())
         for t in tracks:
             self.track_tree.insert('', 'end', iid=str(t['id']),
-                                   values=(t['id'], t['type'], t['lang'], t['name'],
-                                           '✓' if t['forced'] else ''))
+                                   values=(t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
+                                           '✓' if t['forced'] else '',
+                                           '✓' if t.get('default') else ''))
 
     def _move_track(self, direction):
         sel = self.track_tree.selection()
@@ -4038,8 +4085,8 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             vals = self.track_tree.item(item, 'values')
             template.append({
                 'type': vals[1],
-                'lang': vals[2],
-                'forced': vals[4] == '✓',
+                'lang': vals[3],
+                'forced': vals[5] == '✓',
             })
         return template
 
@@ -4467,7 +4514,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         use_output_dir = self.bp_output_dir_var.get()
         output_dir_path = self.bp_output_path_var.get().strip()
         mkvmerge = self.parent_app.mkvmerge_path_entry.get()
-        ref_lang = self.bp_ref_lang_var.get()
+        ref_lang = self.bp_ref_lang_var.get().split()[0]
         try:
             duration = int(self.bp_duration_var.get())
         except ValueError:
@@ -5069,6 +5116,8 @@ class PyMkvPropEdit:
             'bp_search_lang': self.batch_pro_app.search_lang_var.get() if hasattr(self, 'batch_pro_app') else 'fr',
             'bp_api_provider': self.batch_pro_app.bp_api_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
             'bp_ref_lang': self.batch_pro_app.bp_ref_lang_var.get() if hasattr(self, 'batch_pro_app') else 'jpn',
+            'bp_duration': self.batch_pro_app.bp_duration_var.get() if hasattr(self, 'batch_pro_app') else "120",
+            'bp_start': self.batch_pro_app.bp_start_var.get() if hasattr(self, 'batch_pro_app') else "300",
             'bp_sync': self.batch_pro_app.bp_sync_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_sync_subs': self.batch_pro_app.bp_sync_subs_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_props': self.batch_pro_app.bp_props_var.get() if hasattr(self, 'batch_pro_app') else True,
