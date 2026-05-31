@@ -4315,11 +4315,23 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 + ET.tostring(root, encoding='unicode'))
 
     def _embed_metadata_to_file(self, mkv_path, chosen, parsed):
-        """Embed MKV tags, cover art and Kodi NFO via a SINGLE mkvpropedit call."""
+        """Embed MKV tags, cover art and Kodi NFO via mkvpropedit (restored f60b167 flow)."""
         mkvpropedit = self.parent_app.mkvpropedit_path_entry.get()
         if not mkvpropedit or not os.path.exists(mkvpropedit):
             self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
             return
+
+        # Pre-pass: delete old attachments in a SEPARATE call (as in the working
+        # f60b167 release). Combining delete + add in one call broke some files.
+        if chosen.get('clean_tags', True):
+            del_args = [mkvpropedit, mkv_path]
+            for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                del_args += ['--delete-attachment', f'name:{att_name}']
+            try:
+                run_hidden(del_args)  # return code ignored (attachment may be absent)
+                self._bp_log("  meta: anciens attachments supprimés")
+            except Exception:
+                pass
 
         temp_files = []
         try:
@@ -4337,13 +4349,8 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             content_rating = (chosen.get('content_rating') or '').strip()
             cover_url = (chosen.get('cover_url') or '').strip()
 
-            # ── Single mkvpropedit call — build all args at once ──────────────
+            # ── Main embed call: tags + cover + kodi (NO --edit info) ─────────
             args = [mkvpropedit, mkv_path]
-
-            # 1. Delete old cover/kodi attachments (code 1 = warning if absent, OK)
-            if chosen.get('clean_tags', True):
-                for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
-                    args += ['--delete-attachment', f'name:{att_name}']
 
             # 2. Build XML tags + add --tags + --edit info --set title
             if title or description or synopsis or genres or cast:
@@ -4407,9 +4414,6 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
-                # Update Segment Info title in the same single call
-                if title:
-                    args += ['--edit', 'info', '--set', f'title={title}']
                 self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
                              f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
 
