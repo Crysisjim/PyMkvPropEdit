@@ -4315,26 +4315,15 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 + ET.tostring(root, encoding='unicode'))
 
     def _embed_metadata_to_file(self, mkv_path, chosen, parsed):
-        """Embed MKV tags (title/description) and cover art in-place via mkvpropedit."""
+        """Embed MKV tags, cover art and Kodi NFO via a SINGLE mkvpropedit call."""
         mkvpropedit = self.parent_app.mkvpropedit_path_entry.get()
         if not mkvpropedit or not os.path.exists(mkvpropedit):
             self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
             return
-        args = [mkvpropedit, mkv_path]
-        temp_files = []
 
-        # Pre-pass: remove existing cover/kodi-metadata attachments before adding new ones
-        if chosen.get('clean_tags', True):
-            del_args = [mkvpropedit, mkv_path]
-            for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
-                del_args += ['--delete-attachment', f'name:{att_name}']
-            try:
-                run_hidden(del_args)  # return code ignored (attachment may not exist)
-                self._bp_log("  meta: anciens attachments supprimés")
-            except Exception:
-                pass
+        temp_files = []
         try:
-            # Build XML tags
+            # ── Parse chosen fields (guard against None) ──────────────────────
             title = (chosen.get('episode_name') or chosen.get('name') or '').strip()
             series_title = (chosen.get('name') or '') if parsed.get('kind') == 'series' else ''
             description = (chosen.get('description') or '').strip()
@@ -4346,137 +4335,92 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             cast = chosen.get('cast') or []
             imdb_id = (chosen.get('imdb_id') or '').strip()
             content_rating = (chosen.get('content_rating') or '').strip()
+            cover_url = (chosen.get('cover_url') or '').strip()
 
+            # ── Single mkvpropedit call — build all args at once ──────────────
+            args = [mkvpropedit, mkv_path]
+
+            # 1. Delete old cover/kodi attachments (code 1 = warning if absent, OK)
+            if chosen.get('clean_tags', True):
+                for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                    args += ['--delete-attachment', f'name:{att_name}']
+
+            # 2. Build XML tags + add --tags + --edit info --set title
             if title or description or synopsis or genres or cast:
                 root = ET.Element('Tags')
-                tag = ET.SubElement(root, 'Tag')
-                targets = ET.SubElement(tag, 'Targets')
+                tag_el = ET.SubElement(root, 'Tag')
+                targets = ET.SubElement(tag_el, 'Targets')
                 ET.SubElement(targets, 'TargetTypeValue').text = '50'
+                def _simple(name, value):
+                    s = ET.SubElement(tag_el, 'Simple')
+                    ET.SubElement(s, 'Name').text = name
+                    ET.SubElement(s, 'String').text = value
                 if title:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'TITLE'
-                    ET.SubElement(s, 'String').text = title
+                    _simple('TITLE', title)
                 if description:
-                    # SUMMARY tag (court)
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'SUMMARY'
-                    ET.SubElement(s, 'String').text = description
-                    # DESCRIPTION tag = "Short Description" dans MetaX
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'DESCRIPTION'
-                    ET.SubElement(s, 'String').text = description
+                    _simple('SUMMARY', description)
+                    _simple('DESCRIPTION', description)
                 if synopsis and synopsis != description:
-                    # SYNOPSIS tag = "Long Description" dans MetaX
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'SYNOPSIS'
-                    ET.SubElement(s, 'String').text = synopsis
+                    _simple('SYNOPSIS', synopsis)
                 if date_str:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'DATE_RELEASED'
-                    ET.SubElement(s, 'String').text = date_str
-                # Show title (series name) + content type + season/episode
+                    _simple('DATE_RELEASED', date_str)
                 if series_title:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'SHOW'
-                    ET.SubElement(s, 'String').text = series_title
-                content_type = 'TV Show' if parsed.get('kind') == 'series' else 'Movie'
-                s = ET.SubElement(tag, 'Simple')
-                ET.SubElement(s, 'Name').text = 'CONTENT_TYPE'
-                ET.SubElement(s, 'String').text = content_type
+                    _simple('SHOW', series_title)
+                _simple('CONTENT_TYPE', 'TV Show' if parsed.get('kind') == 'series' else 'Movie')
                 if parsed.get('kind') == 'series':
                     if parsed.get('season'):
-                        s = ET.SubElement(tag, 'Simple')
-                        ET.SubElement(s, 'Name').text = 'SEASON.PART_NUM'
-                        ET.SubElement(s, 'String').text = str(parsed['season'])
+                        _simple('SEASON.PART_NUM', str(parsed['season']))
                     if parsed.get('episode'):
-                        s = ET.SubElement(tag, 'Simple')
-                        ET.SubElement(s, 'Name').text = 'EPISODE.PART_NUM'
-                        ET.SubElement(s, 'String').text = str(parsed['episode'])
-                # Director / Screenwriter / Producer / Studio (from crew markers)
+                        _simple('EPISODE.PART_NUM', str(parsed['episode']))
                 directors = [a['name'] for a in cast if a.get('role') == '__director__']
-                writers = [a['name'] for a in cast if a.get('role') == '__writer__']
+                writers   = [a['name'] for a in cast if a.get('role') == '__writer__']
                 producers = [a['name'] for a in cast if a.get('role') == '__producer__']
-                studios = [a['name'] for a in cast if a.get('role') == '__studio__']
+                studios   = [a['name'] for a in cast if a.get('role') == '__studio__']
                 actors_only = [a for a in cast if a.get('role') not in
                                ('__director__', '__writer__', '__producer__', '__studio__')]
                 if directors:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'DIRECTOR'
-                    ET.SubElement(s, 'String').text = ', '.join(directors)
+                    _simple('DIRECTOR', ', '.join(directors))
                 if writers:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'WRITTEN_BY'
-                    ET.SubElement(s, 'String').text = ', '.join(writers)
+                    _simple('WRITTEN_BY', ', '.join(writers))
                 if producers:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'PRODUCER'
-                    ET.SubElement(s, 'String').text = ', '.join(producers)
+                    _simple('PRODUCER', ', '.join(producers))
                 if studios:
                     studio_str = ', '.join(studios)
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'PRODUCTION_STUDIO'
-                    ET.SubElement(s, 'String').text = studio_str
-                    s2 = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s2, 'Name').text = 'COPYRIGHT'
-                    ET.SubElement(s2, 'String').text = studio_str
-                cast = actors_only  # use only actors for ARTIST/ACTOR tags below
-
-                # Artist / Performer (= cast comma-joined — shown as "Interprète" in MediaInfo)
-                if cast:
-                    artist_str = ", ".join(a['name'] for a in cast[:10] if a.get('name'))
+                    _simple('PRODUCTION_STUDIO', studio_str)
+                    _simple('COPYRIGHT', studio_str)
+                if actors_only:
+                    artist_str = ', '.join(a['name'] for a in actors_only[:10] if a.get('name'))
                     if artist_str:
-                        s = ET.SubElement(tag, 'Simple')
-                        ET.SubElement(s, 'Name').text = 'ARTIST'
-                        ET.SubElement(s, 'String').text = artist_str
-                        # Single ACTOR tag comma-joined (MetaX Video > "Actors/Cast" compatibility)
-                        s2 = ET.SubElement(tag, 'Simple')
-                        ET.SubElement(s2, 'Name').text = 'ACTOR'
-                        ET.SubElement(s2, 'String').text = artist_str
-                # Genres — single comma-joined tag (like MetaX, shown fully by MediaInfo)
+                        _simple('ARTIST', artist_str)
+                        _simple('ACTOR', artist_str)
                 if genres:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'GENRE'
-                    ET.SubElement(s, 'String').text = ', '.join(g for g in genres if g)
-                # Rating (both LAW_RATING and RATING for MetaX compatibility)
+                    _simple('GENRE', ', '.join(g for g in genres if g))
                 if content_rating:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'LAW_RATING'
-                    ET.SubElement(s, 'String').text = content_rating
-                    s2 = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s2, 'Name').text = 'RATING'
-                    ET.SubElement(s2, 'String').text = content_rating
-                # IMDB
+                    _simple('LAW_RATING', content_rating)
+                    _simple('RATING', content_rating)
                 if imdb_id:
-                    s = ET.SubElement(tag, 'Simple')
-                    ET.SubElement(s, 'Name').text = 'IMDB'
-                    ET.SubElement(s, 'String').text = imdb_id
+                    _simple('IMDB', imdb_id)
+
                 xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='unicode')
-                tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False,
-                                                 mode='w', encoding='utf-8')
+                tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False, mode='w', encoding='utf-8')
                 tf.write(xml_str)
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
-                self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c genres={genres[:2]} cover={'✓' if chosen.get('cover_url') else '✗'}")
-                # Update Segment Info title separately (best-effort, won't block main call)
+                # Update Segment Info title in the same single call
                 if title:
-                    try:
-                        run_hidden([mkvpropedit, mkv_path, '--edit', 'info', '--set', f'title={title}'])
-                    except Exception:
-                        pass
+                    args += ['--edit', 'info', '--set', f'title={title}']
+                self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
+                             f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
 
-            # Download cover art
-            cover_url = chosen.get('cover_url', '')
+            # 3. Cover art download → add attachment in same call
             if cover_url:
                 try:
-                    ext = '.jpg'
-                    if cover_url.lower().endswith('.png'):
-                        ext = '.png'
+                    ext = '.png' if cover_url.lower().endswith('.png') else '.jpg'
                     mime = 'image/png' if ext == '.png' else 'image/jpeg'
                     cf = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
                     cf.close()
-                    req = urllib.request.Request(cover_url,
-                                                 headers={'User-Agent': 'PyMkvPropEdit/3.7'})
+                    req = urllib.request.Request(cover_url, headers={'User-Agent': 'PyMkvPropEdit/3.7'})
                     with urllib.request.urlopen(req, timeout=15) as resp:
                         with open(cf.name, 'wb') as fout:
                             fout.write(resp.read())
@@ -4488,12 +4432,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 except Exception as e:
                     self._bp_log(f"  ⚠️ meta: cover download échoué: {e}")
 
-            # Generate kodi-metadata NFO attachment
+            # 4. Kodi NFO → add attachment in same call
             try:
                 nfo_xml = self._generate_kodi_nfo(parsed, chosen, series_title)
                 if nfo_xml:
-                    nf = tempfile.NamedTemporaryFile(suffix='.nfo', delete=False,
-                                                     mode='w', encoding='utf-8')
+                    nf = tempfile.NamedTemporaryFile(suffix='.nfo', delete=False, mode='w', encoding='utf-8')
                     nf.write(nfo_xml)
                     nf.close()
                     temp_files.append(nf.name)
@@ -4504,12 +4447,13 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             except Exception as e:
                 self._bp_log(f"  ⚠️ meta: kodi-metadata échoué: {e}")
 
+            # ── ONE mkvpropedit call for everything ───────────────────────────
             if len(args) > 2:
                 proc = run_hidden(args)
                 if proc.returncode in (0, 1):
                     self._bp_log("  meta: intégrée OK")
                 else:
-                    self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode}")
+                    self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode} — stderr: {proc.stderr[:200] if proc.stderr else ''}")
         finally:
             for f in temp_files:
                 safe_remove(f)
