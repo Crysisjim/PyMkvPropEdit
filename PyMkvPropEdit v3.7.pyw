@@ -356,6 +356,7 @@ STRINGS: dict = {
         'bp_col_track': 'Piste', 'bp_col_type': 'Type', 'bp_col_lang': 'Langue',
         'bp_col_name_tr': 'Nom', 'bp_col_forced': 'Forcé',
         'bp_col_codec': 'Codec', 'bp_col_default': 'Défaut',
+        'bp_chk_preserve': 'Conserver source (mode copie)',
         'lbl_tvdb_key': 'Clé API TheTVDB :',
         'lbl_tmdb_key': 'Clé API TMDB :',
     },
@@ -533,6 +534,7 @@ STRINGS: dict = {
         'bp_col_track': 'Track', 'bp_col_type': 'Type', 'bp_col_lang': 'Language',
         'bp_col_name_tr': 'Name', 'bp_col_forced': 'Forced',
         'bp_col_codec': 'Codec', 'bp_col_default': 'Default',
+        'bp_chk_preserve': 'Preserve source (copy mode)',
         'lbl_tvdb_key': 'TheTVDB API key:',
         'lbl_tmdb_key': 'TMDB API key:',
     }
@@ -3739,6 +3741,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         ttk.Checkbutton(opts, text=T('bp_chk_reorder'), variable=self.bp_reorder_var).pack(side='left', padx=6)
         ttk.Checkbutton(opts, text=T('bp_chk_rename'), variable=self.bp_rename_var).pack(side='left', padx=6)
 
+        self.bp_preserve_src_var = tk.BooleanVar(value=settings.get('bp_preserve_src', False))
+        ttk.Checkbutton(opts, text=T('bp_chk_preserve'), variable=self.bp_preserve_src_var).pack(side='left', padx=6)
+
         srow2 = tk.Frame(sec4)
         srow2.pack(fill='x', pady=1)
         tk.Label(srow2, text=T('lbl_ref_lang')).pack(side='left')
@@ -4446,10 +4451,13 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
-                # Also update Segment Info title (visible in MediaInfo "Titre" field)
+                self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c genres={genres[:2]} cover={'✓' if chosen.get('cover_url') else '✗'}")
+                # Update Segment Info title separately (best-effort, won't block main call)
                 if title:
-                    args += ['--edit', 'info', '--set', f'title={title}']
-                self._bp_log(f"  meta: tags title={title[:40]!r}")
+                    try:
+                        run_hidden([mkvpropedit, mkv_path, '--edit', 'info', '--set', f'title={title}'])
+                    except Exception:
+                        pass
 
             # Download cover art
             cover_url = chosen.get('cover_url', '')
@@ -4519,6 +4527,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         do_props = self.bp_props_var.get()
         do_reorder = self.bp_reorder_var.get()
         do_rename = self.bp_rename_var.get()
+        preserve_src = self.bp_preserve_src_var.get()
         use_output_dir = self.bp_output_dir_var.get()
         output_dir_path = self.bp_output_path_var.get().strip()
         mkvmerge = self.parent_app.mkvmerge_path_entry.get()
@@ -4610,6 +4619,18 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                         self._bp_log(f"  réordonnancement: {order_str}")
                     else:
                         self._bp_log("  ordre pistes: déjà correct, pas de remux nécessaire")
+
+                # Preserve source: if no remux planned but user wants source kept,
+                # create a fast copy so we process the copy and leave source intact.
+                if preserve_src and not needs_remux:
+                    b, ext = os.path.splitext(mkv_path)
+                    out_file = f"{b}_COPY{ext}"
+                    try:
+                        shutil.copy2(mkv_path, out_file)
+                        current_file = out_file
+                        self._bp_log("  source préservée → copie créée")
+                    except Exception as e:
+                        self._bp_log(f"  ⚠️ copie source échouée ({e}), traitement en place")
 
                 # Single-pass mkvmerge (sync + reorder)
                 if needs_remux:
@@ -5139,6 +5160,7 @@ class PyMkvPropEdit:
             'bp_ref_lang': self.batch_pro_app.bp_ref_lang_var.get() if hasattr(self, 'batch_pro_app') else 'jpn',
             'bp_duration': self.batch_pro_app.bp_duration_var.get() if hasattr(self, 'batch_pro_app') else "120",
             'bp_start': self.batch_pro_app.bp_start_var.get() if hasattr(self, 'batch_pro_app') else "300",
+            'bp_preserve_src': self.batch_pro_app.bp_preserve_src_var.get() if hasattr(self, 'batch_pro_app') else False,
             'bp_sync': self.batch_pro_app.bp_sync_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_sync_subs': self.batch_pro_app.bp_sync_subs_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_props': self.batch_pro_app.bp_props_var.get() if hasattr(self, 'batch_pro_app') else True,
