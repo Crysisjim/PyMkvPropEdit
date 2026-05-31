@@ -4333,169 +4333,143 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         body = _XML_INVALID_RE.sub('', ET.tostring(root, encoding='unicode'))
         return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + body)
 
-    def _embed_metadata_to_file(self, mkv_path, chosen, parsed):
-        """Embed MKV tags, cover art and Kodi NFO via mkvpropedit (restored f60b167 flow)."""
-        mkvpropedit = self.parent_app.mkvpropedit_path_entry.get()
-        if not mkvpropedit or not os.path.exists(mkvpropedit):
-            self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
-            return
-
-        # Pre-pass: delete old attachments in a SEPARATE call (as in the working
-        # f60b167 release). Combining delete + add in one call broke some files.
-        if chosen.get('clean_tags', True):
-            del_args = [mkvpropedit, mkv_path]
-            for att_name in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
-                del_args += ['--delete-attachment', f'name:{att_name}']
-            try:
-                run_hidden(del_args)  # return code ignored (attachment may be absent)
-                self._bp_log("  meta: anciens attachments supprimés")
-            except Exception:
-                pass
-
+    def _prepare_metadata_assets(self, mkv_path, chosen, parsed):
+        """Generate the metadata assets (tags XML, cover image, Kodi NFO) WITHOUT
+        writing them. They are injected by the final mkvmerge mux in the pipeline so
+        that:
+          - tags get an empty <Targets/> (MetaX-compatible, like MetaX's own output),
+          - the file gets a single clean SeekHead (MediaInfo/VLC read the tags),
+          - cover + kodi-metadata are placed BEFORE the fonts (same order as MetaX).
+        Returns a dict {tags_xml, cover_path, cover_name, cover_mime, nfo_path,
+        temp_files} or None if there is nothing to write. Caller must clean temp_files.
+        """
         temp_files = []
-        try:
-            # ── Parse chosen fields (guard against None) ──────────────────────
-            title = (chosen.get('episode_name') or chosen.get('name') or '').strip()
-            series_title = (chosen.get('name') or '') if parsed.get('kind') == 'series' else ''
-            description = (chosen.get('description') or '').strip()
-            synopsis = (chosen.get('synopsis') or description).strip()
-            aired = (chosen.get('aired') or '').strip()
-            year = (chosen.get('year') or parsed.get('year') or '')
-            date_str = aired or (str(year) if year else '')
-            genres = chosen.get('genres') or []
-            cast = chosen.get('cast') or []
-            imdb_id = (chosen.get('imdb_id') or '').strip()
-            content_rating = (chosen.get('content_rating') or '').strip()
-            cover_url = (chosen.get('cover_url') or '').strip()
+        assets = {'tags_xml': None, 'cover_path': None, 'cover_name': None,
+                  'cover_mime': None, 'nfo_path': None, 'temp_files': temp_files}
 
-            # ── Main embed call: tags + cover + kodi (NO --edit info) ─────────
-            args = [mkvpropedit, mkv_path]
+        # ── Parse chosen fields (guard against None) ──────────────────────────
+        title = (chosen.get('episode_name') or chosen.get('name') or '').strip()
+        series_title = (chosen.get('name') or '') if parsed.get('kind') == 'series' else ''
+        description = (chosen.get('description') or '').strip()
+        synopsis = (chosen.get('synopsis') or description).strip()
+        aired = (chosen.get('aired') or '').strip()
+        year = (chosen.get('year') or parsed.get('year') or '')
+        date_str = aired or (str(year) if year else '')
+        genres = chosen.get('genres') or []
+        cast = chosen.get('cast') or []
+        imdb_id = (chosen.get('imdb_id') or '').strip()
+        content_rating = (chosen.get('content_rating') or '').strip()
+        cover_url = (chosen.get('cover_url') or '').strip()
 
-            # 2. Build XML tags + add --tags + --edit info --set title
-            if title or description or synopsis or genres or cast:
-                root = ET.Element('Tags')
-                tag_el = ET.SubElement(root, 'Tag')
-                targets = ET.SubElement(tag_el, 'Targets')
-                ET.SubElement(targets, 'TargetTypeValue').text = '50'
-                # CRITICAL: add a TargetType string. mkvpropedit strips TargetTypeValue=50
-                # (the default value), leaving <Targets/> empty — which makes MediaInfo/VLC
-                # IGNORE all global tags. The TargetType string is never stripped, so Targets
-                # stays non-empty and players read the tags. Without this, tags are written
-                # but invisible in MediaInfo (the long-standing "tags missing" bug).
-                ET.SubElement(targets, 'TargetType').text = 'MOVIE'
-                def _simple(name, value):
-                    val = xml_safe_text(value)
-                    if not val:
-                        return
-                    s = ET.SubElement(tag_el, 'Simple')
-                    ET.SubElement(s, 'Name').text = name
-                    ET.SubElement(s, 'String').text = val
-                if title:
-                    _simple('TITLE', title)
-                if description:
-                    _simple('SUMMARY', description)
-                    _simple('DESCRIPTION', description)
-                if synopsis and synopsis != description:
-                    _simple('SYNOPSIS', synopsis)
-                if date_str:
-                    _simple('DATE_RELEASED', date_str)
-                if series_title:
-                    _simple('SHOW', series_title)
-                _simple('CONTENT_TYPE', 'TV Show' if parsed.get('kind') == 'series' else 'Movie')
-                if parsed.get('kind') == 'series':
-                    if parsed.get('season'):
-                        _simple('SEASON.PART_NUM', str(parsed['season']))
-                    if parsed.get('episode'):
-                        _simple('EPISODE.PART_NUM', str(parsed['episode']))
-                directors = [a['name'] for a in cast if a.get('role') == '__director__']
-                writers   = [a['name'] for a in cast if a.get('role') == '__writer__']
-                producers = [a['name'] for a in cast if a.get('role') == '__producer__']
-                studios   = [a['name'] for a in cast if a.get('role') == '__studio__']
-                actors_only = [a for a in cast if a.get('role') not in
-                               ('__director__', '__writer__', '__producer__', '__studio__')]
-                if directors:
-                    _simple('DIRECTOR', ', '.join(directors))
-                if writers:
-                    _simple('WRITTEN_BY', ', '.join(writers))
-                if producers:
-                    _simple('PRODUCER', ', '.join(producers))
-                if studios:
-                    studio_str = ', '.join(studios)
-                    _simple('PRODUCTION_STUDIO', studio_str)
-                    _simple('COPYRIGHT', studio_str)
-                if actors_only:
-                    artist_str = ', '.join(a['name'] for a in actors_only[:10] if a.get('name'))
-                    if artist_str:
-                        _simple('ARTIST', artist_str)
-                        _simple('ACTOR', artist_str)
-                if genres:
-                    _simple('GENRE', ', '.join(g for g in genres if g))
-                if content_rating:
-                    _simple('LAW_RATING', content_rating)
-                    _simple('RATING', content_rating)
-                if imdb_id:
-                    _simple('IMDB', imdb_id)
+        # 1. Build tags XML (empty Targets after the default TargetTypeValue=50)
+        if title or description or synopsis or genres or cast:
+            root = ET.Element('Tags')
+            tag_el = ET.SubElement(root, 'Tag')
+            targets = ET.SubElement(tag_el, 'Targets')
+            ET.SubElement(targets, 'TargetTypeValue').text = '50'
+            # NOTE: no <TargetType> string — MetaX expects empty Targets.
+            def _simple(name, value):
+                val = xml_safe_text(value)
+                if not val:
+                    return
+                s = ET.SubElement(tag_el, 'Simple')
+                ET.SubElement(s, 'Name').text = name
+                ET.SubElement(s, 'String').text = val
+            if title:
+                _simple('TITLE', title)
+            if description:
+                _simple('SUMMARY', description)
+                _simple('DESCRIPTION', description)
+            # Always write SYNOPSIS (MetaX reads its "Long Description" from this tag).
+            # Even when it equals the short description, MetaX needs it filled.
+            if synopsis:
+                _simple('SYNOPSIS', synopsis)
+            if date_str:
+                _simple('DATE_RELEASED', date_str)
+            if series_title:
+                _simple('SHOW', series_title)
+            _simple('CONTENT_TYPE', 'TV Show' if parsed.get('kind') == 'series' else 'Movie')
+            if parsed.get('kind') == 'series':
+                if parsed.get('season'):
+                    _simple('SEASON.PART_NUM', str(parsed['season']))
+                if parsed.get('episode'):
+                    _simple('EPISODE.PART_NUM', str(parsed['episode']))
+            directors = [a['name'] for a in cast if a.get('role') == '__director__']
+            writers   = [a['name'] for a in cast if a.get('role') == '__writer__']
+            producers = [a['name'] for a in cast if a.get('role') == '__producer__']
+            studios   = [a['name'] for a in cast if a.get('role') == '__studio__']
+            actors_only = [a for a in cast if a.get('role') not in
+                           ('__director__', '__writer__', '__producer__', '__studio__')]
+            if directors:
+                _simple('DIRECTOR', ', '.join(directors))
+            if writers:
+                _simple('WRITTEN_BY', ', '.join(writers))
+            if producers:
+                _simple('PRODUCER', ', '.join(producers))
+            if studios:
+                studio_str = ', '.join(studios)
+                _simple('PRODUCTION_STUDIO', studio_str)
+                _simple('COPYRIGHT', studio_str)
+            if actors_only:
+                artist_str = ', '.join(a['name'] for a in actors_only[:10] if a.get('name'))
+                if artist_str:
+                    _simple('ARTIST', artist_str)
+                    _simple('ACTOR', artist_str)
+            if genres:
+                _simple('GENRE', ', '.join(g for g in genres if g))
+            if content_rating:
+                _simple('LAW_RATING', content_rating)
+                _simple('RATING', content_rating)
+            if imdb_id:
+                _simple('IMDB', imdb_id)
 
-                xml_body = _XML_INVALID_RE.sub('', ET.tostring(root, encoding='unicode'))
-                xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body
-                tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False, mode='w', encoding='utf-8')
-                tf.write(xml_str)
-                tf.close()
-                temp_files.append(tf.name)
-                args += ['--tags', f'all:{tf.name}']
-                logger.debug(f"BatchPro embed tags XML ({len(xml_str)} chars) for {os.path.basename(mkv_path)}")
-                self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
-                             f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
+            xml_body = _XML_INVALID_RE.sub('', ET.tostring(root, encoding='unicode'))
+            xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body
+            tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False, mode='w', encoding='utf-8')
+            tf.write(xml_str)
+            tf.close()
+            temp_files.append(tf.name)
+            assets['tags_xml'] = tf.name
+            self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
+                         f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
 
-            # 3. Cover art download → add attachment in same call
-            if cover_url:
-                try:
-                    ext = '.png' if cover_url.lower().endswith('.png') else '.jpg'
-                    mime = 'image/png' if ext == '.png' else 'image/jpeg'
-                    cf = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-                    cf.close()
-                    req = urllib.request.Request(cover_url, headers={'User-Agent': 'PyMkvPropEdit/3.7'})
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        with open(cf.name, 'wb') as fout:
-                            fout.write(resp.read())
-                    temp_files.append(cf.name)
-                    args += ['--attachment-name', f'cover{ext}',
-                             '--attachment-mime-type', mime,
-                             '--add-attachment', cf.name]
-                    self._bp_log("  meta: cover art téléchargé")
-                except Exception as e:
-                    self._bp_log(f"  ⚠️ meta: cover download échoué: {e}")
-
-            # 4. Kodi NFO → add attachment in same call
+        # 2. Cover art download
+        if cover_url:
             try:
-                nfo_xml = self._generate_kodi_nfo(parsed, chosen, series_title)
-                if nfo_xml:
-                    nf = tempfile.NamedTemporaryFile(suffix='.nfo', delete=False, mode='w', encoding='utf-8')
-                    nf.write(nfo_xml)
-                    nf.close()
-                    temp_files.append(nf.name)
-                    args += ['--attachment-name', 'kodi-metadata',
-                             '--attachment-mime-type', 'application/xml',
-                             '--add-attachment', nf.name]
-                    self._bp_log("  meta: kodi-metadata NFO généré")
+                ext = '.png' if cover_url.lower().endswith('.png') else '.jpg'
+                mime = 'image/png' if ext == '.png' else 'image/jpeg'
+                cf = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+                cf.close()
+                req = urllib.request.Request(cover_url, headers={'User-Agent': 'PyMkvPropEdit/3.7'})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    with open(cf.name, 'wb') as fout:
+                        fout.write(resp.read())
+                temp_files.append(cf.name)
+                assets['cover_path'] = cf.name
+                assets['cover_name'] = f'cover{ext}'
+                assets['cover_mime'] = mime
+                self._bp_log("  meta: cover art téléchargé")
             except Exception as e:
-                self._bp_log(f"  ⚠️ meta: kodi-metadata échoué: {e}")
+                self._bp_log(f"  ⚠️ meta: cover download échoué: {e}")
 
-            # ── ONE mkvpropedit call for everything ───────────────────────────
-            if len(args) > 2:
-                proc = run_hidden(args)
-                logger.debug(f"BatchPro embed mkvpropedit RC={proc.returncode}")
-                if proc.stderr:
-                    logger.debug(f"BatchPro embed stderr: {proc.stderr}")
-                if proc.returncode in (0, 1):
-                    self._bp_log("  meta: intégrée OK")
-                else:
-                    self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode} — stderr: {proc.stderr[:200] if proc.stderr else ''}")
-            else:
-                self._bp_log("  ⚠️ meta: aucun tag/attachment à écrire (args vides)")
-        finally:
-            for f in temp_files:
-                safe_remove(f)
+        # 3. Kodi NFO
+        try:
+            nfo_xml = self._generate_kodi_nfo(parsed, chosen, series_title)
+            if nfo_xml:
+                nf = tempfile.NamedTemporaryFile(suffix='.nfo', delete=False, mode='w', encoding='utf-8')
+                nf.write(nfo_xml)
+                nf.close()
+                temp_files.append(nf.name)
+                assets['nfo_path'] = nf.name
+                self._bp_log("  meta: kodi-metadata NFO généré")
+        except Exception as e:
+            self._bp_log(f"  ⚠️ meta: kodi-metadata échoué: {e}")
+
+        if assets['tags_xml'] or assets['cover_path'] or assets['nfo_path']:
+            return assets
+        for f in temp_files:
+            safe_remove(f)
+        return None
 
     # ---- Pipeline execution ----
     def _run_pipeline(self):
@@ -4640,8 +4614,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                     success, msg = self.apply_mkvpropedit_to_file(current_file, self.parent_app)
                     self._bp_log(f"  mkvpropedit: {msg or 'OK'}")
 
-                # Embed metadata (tags + cover art)
+                # Prepare metadata assets (tags + cover + kodi) — injected by final mkvmerge mux
                 do_embed = self.bp_embed_meta_var.get()
+                embed_assets = None
                 if do_embed and mkv_path in self.file_results:
                     res = self.file_results[mkv_path]
                     chosen_embed = dict(res.get('chosen', {}))
@@ -4651,7 +4626,20 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                     if prefs:
                         chosen_embed = self._apply_picker_prefs(mkv_path, chosen_embed, prefs)
                     if chosen_embed.get('description') or chosen_embed.get('cover_url'):
-                        self._embed_metadata_to_file(current_file, chosen_embed, res.get('parsed', {}))
+                        # Remove any pre-existing cover/kodi from the working file so the
+                        # final mux does not create duplicates (reprocessing case).
+                        if chosen_embed.get('clean_tags', True):
+                            mkvpropedit_p = self.parent_app.mkvpropedit_path_entry.get()
+                            if mkvpropedit_p and os.path.exists(mkvpropedit_p):
+                                del_args = [mkvpropedit_p, current_file]
+                                for an in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                                    del_args += ['--delete-attachment', f'name:{an}']
+                                try:
+                                    run_hidden(del_args)
+                                except Exception:
+                                    pass
+                        embed_assets = self._prepare_metadata_assets(
+                            current_file, chosen_embed, res.get('parsed', {}))
                     else:
                         self._bp_log("  meta: pas de données (lancer 🔍 d'abord)")
 
@@ -4676,25 +4664,71 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
                 final_path = os.path.join(final_dir, final_name)
 
-                if current_file != final_path:
-                    try:
-                        # Never silently delete an existing output file — use a unique name instead
-                        if os.path.exists(final_path):
-                            root, ext2 = os.path.splitext(final_path)
-                            counter = 2
-                            while os.path.exists(final_path):
-                                final_path = f"{root} ({counter}){ext2}"
-                                counter += 1
-                            self._bp_log(f"  ℹ️ destination existante → renommé en {os.path.basename(final_path)}")
-                        os.rename(current_file, final_path)
-                        if final_name != os.path.basename(current_file):
-                            self._bp_log(f"  renommé → {final_name}")
-                        if use_output_dir:
-                            self._bp_log(f"  → {final_dir}")
-                    except Exception as e:
-                        self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
-                elif use_output_dir and final_dir != os.path.dirname(current_file):
-                    self._bp_log(f"  ℹ️ fichier déjà à destination")
+                # Compute a unique final_path (never overwrite an existing different file)
+                if (os.path.exists(final_path)
+                        and os.path.abspath(final_path) != os.path.abspath(current_file)):
+                    root_fp, ext_fp = os.path.splitext(final_path)
+                    counter = 2
+                    while os.path.exists(final_path):
+                        final_path = f"{root_fp} ({counter}){ext_fp}"
+                        counter += 1
+                    self._bp_log(f"  ℹ️ destination existante → {os.path.basename(final_path)}")
+
+                if embed_assets:
+                    # Inject tags + cover + kodi via mkvmerge in ONE pass:
+                    #  - single clean SeekHead  → MediaInfo/VLC read the tags
+                    #  - empty <Targets/>       → MetaX reads the tags
+                    #  - cover/kodi before fonts → same attachment order as MetaX
+                    tmp_final = f"{os.path.splitext(current_file)[0]}_FINAL.mkv"
+                    mux = [mkvmerge, "-o", tmp_final]
+                    if embed_assets.get('tags_xml'):
+                        mux += ['--global-tags', embed_assets['tags_xml']]
+                    if embed_assets.get('cover_path'):
+                        mux += ['--attachment-name', embed_assets['cover_name'],
+                                '--attachment-mime-type', embed_assets['cover_mime'],
+                                '--attach-file', embed_assets['cover_path']]
+                    if embed_assets.get('nfo_path'):
+                        mux += ['--attachment-name', 'kodi-metadata',
+                                '--attachment-mime-type', 'application/xml',
+                                '--attach-file', embed_assets['nfo_path']]
+                    mux += [current_file]
+                    proc_mux = run_hidden(mux)
+                    for f in embed_assets.get('temp_files', []):
+                        safe_remove(f)
+                    if proc_mux.returncode in (0, 1) and os.path.exists(tmp_final):
+                        try:
+                            if os.path.abspath(current_file) != os.path.abspath(mkv_path) or not preserve_src:
+                                safe_remove(current_file)
+                        except Exception:
+                            pass
+                        try:
+                            os.replace(tmp_final, final_path)
+                            self._bp_log("  meta: intégrée (mkvmerge — ordre MetaX, SeekHead propre)")
+                            if final_name != base_name:
+                                self._bp_log(f"  renommé → {final_name}")
+                            if use_output_dir:
+                                self._bp_log(f"  → {final_dir}")
+                        except Exception as e:
+                            self._bp_log(f"  ⚠️ déplacement final échoué: {e}")
+                    else:
+                        self._bp_log(f"  ⚠️ intégration mkvmerge échec (code {proc_mux.returncode}) — fallback rename")
+                        safe_remove(tmp_final)
+                        try:
+                            if os.path.abspath(current_file) != os.path.abspath(final_path):
+                                os.rename(current_file, final_path)
+                        except Exception as e:
+                            self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
+                else:
+                    # No embed: simple move/rename
+                    if os.path.abspath(current_file) != os.path.abspath(final_path):
+                        try:
+                            os.rename(current_file, final_path)
+                            if final_name != os.path.basename(current_file):
+                                self._bp_log(f"  renommé → {final_name}")
+                            if use_output_dir:
+                                self._bp_log(f"  → {final_dir}")
+                        except Exception as e:
+                            self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
 
                 self._bp_log(f"  ✓ terminé")
 
