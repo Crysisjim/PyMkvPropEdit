@@ -1369,7 +1369,7 @@ class TVmazeProvider:
         data = _http_get_json(url)
         if data:
             img = data.get("image") or {}
-            summary = data.get("summary", "")
+            summary = data.get("summary") or ""
             summary = re.sub(r'<[^>]+>', '', summary).strip()
             return {
                 'name': data.get("name", ""),
@@ -3543,16 +3543,21 @@ class MetadataPickerDialog(tk.Toplevel):
         if self.filepath in self.file_results:
             self.file_results[self.filepath]['chosen'] = chosen
 
-        if self.apply_all_var.get() and self.batch_pro_tab is not None:
-            # Store SOURCE PREFS — pipeline will fetch per-episode content for each file
-            self.batch_pro_tab.meta_picker_prefs = {
-                'cover_src': cover_src,
-                'desc_src': desc_src,
-                'synopsis_src': syn_src,
-                'cast_src': cast_src,
-                'genre_src': genre_src,
-                'crew_src': crew_src,
-            }
+        if self.batch_pro_tab is not None:
+            if self.apply_all_var.get():
+                # Store SOURCE PREFS — pipeline will fetch per-episode content for each file
+                self.batch_pro_tab.meta_picker_prefs = {
+                    'cover_src': cover_src,
+                    'desc_src': desc_src,
+                    'synopsis_src': syn_src,
+                    'cast_src': cast_src,
+                    'genre_src': genre_src,
+                    'crew_src': crew_src,
+                }
+            else:
+                # apply-all not checked: per-file choice already saved to file_results
+                # clear any leftover apply-all prefs so they don't override per-file choices
+                self.batch_pro_tab.meta_picker_prefs = {}
 
         # Persist radio button choices to settings
         if self.settings is not None:
@@ -4441,6 +4446,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
+                # Also update Segment Info title (visible in MediaInfo "Titre" field)
+                if title:
+                    args += ['--edit', 'info', '--set', f'title={title}']
                 self._bp_log(f"  meta: tags title={title[:40]!r}")
 
             # Download cover art
@@ -4532,6 +4540,13 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             base_name = os.path.basename(mkv_path)
             self._bp_log(f"━━ {base_name} ━━")
             try:
+                # Safety guard: skip immediately if source file no longer exists
+                if not os.path.exists(mkv_path):
+                    self._bp_log(f"  ⛔ fichier source introuvable (déjà déplacé/renommé ?): {mkv_path}")
+                    self._bp_log(f"  ✗ ignoré")
+                    done += 1
+                    continue
+
                 current_file = mkv_path
                 needs_remux = False
                 sync_flags = []
@@ -4651,8 +4666,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
                 if current_file != final_path:
                     try:
+                        # Never silently delete an existing output file — use a unique name instead
                         if os.path.exists(final_path):
-                            os.remove(final_path)
+                            root, ext2 = os.path.splitext(final_path)
+                            counter = 2
+                            while os.path.exists(final_path):
+                                final_path = f"{root} ({counter}){ext2}"
+                                counter += 1
+                            self._bp_log(f"  ℹ️ destination existante → renommé en {os.path.basename(final_path)}")
                         os.rename(current_file, final_path)
                         if final_name != os.path.basename(current_file):
                             self._bp_log(f"  renommé → {final_name}")
