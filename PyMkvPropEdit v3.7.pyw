@@ -3214,8 +3214,10 @@ class MetadataPickerDialog(tk.Toplevel):
         self.provider_meta = {}
         self.provider_images = {}   # pname -> PhotoImage (keep reference!)
 
-        # Selection variables — restore saved choices if available
-        saved_prefs = settings.get('bp_picker_prefs', {}) if settings else {}
+        # Selection variables — restore from per-file prefs first, then global fallback
+        per_file_prefs = (file_results.get(filepath, {}).get('picker_prefs', {})
+                          if file_results and filepath else {})
+        saved_prefs = per_file_prefs or (settings.get('bp_picker_prefs', {}) if settings else {})
         self.cover_var = tk.StringVar(value=saved_prefs.get('cover_src', ''))
         self.desc_var = tk.StringVar(value=saved_prefs.get('desc_src', ''))
         self.synopsis_var = tk.StringVar(value=saved_prefs.get('synopsis_src', ''))
@@ -3561,13 +3563,17 @@ class MetadataPickerDialog(tk.Toplevel):
                 # clear any leftover apply-all prefs so they don't override per-file choices
                 self.batch_pro_tab.meta_picker_prefs = {}
 
-        # Persist radio button choices to settings
+        # Save per-file prefs (so re-opening picker for the same file restores ITS choices)
+        prefs_dict = {
+            'cover_src': cover_src, 'desc_src': desc_src,
+            'synopsis_src': syn_src, 'cast_src': cast_src,
+            'genre_src': genre_src, 'crew_src': crew_src,
+        }
+        if self.filepath and self.file_results and self.filepath in self.file_results:
+            self.file_results[self.filepath]['picker_prefs'] = prefs_dict
+        # Also persist to global settings as default for NEW files (not re-opened ones)
         if self.settings is not None:
-            self.settings['bp_picker_prefs'] = {
-                'cover_src': cover_src, 'desc_src': desc_src,
-                'synopsis_src': syn_src, 'cast_src': cast_src,
-                'genre_src': genre_src, 'crew_src': crew_src,
-            }
+            self.settings['bp_picker_prefs'] = prefs_dict
         self._save_picker_geometry()
         self.destroy()
 
@@ -4329,17 +4335,17 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 pass
         try:
             # Build XML tags
-            title = chosen.get('episode_name') or chosen.get('name', '')
-            series_title = chosen.get('name', '') if parsed.get('kind') == 'series' else ''
-            description = chosen.get('description', '')
-            synopsis = chosen.get('synopsis', description)
-            aired = chosen.get('aired', '')
-            year = chosen.get('year', '') or parsed.get('year', '')
+            title = (chosen.get('episode_name') or chosen.get('name') or '').strip()
+            series_title = (chosen.get('name') or '') if parsed.get('kind') == 'series' else ''
+            description = (chosen.get('description') or '').strip()
+            synopsis = (chosen.get('synopsis') or description).strip()
+            aired = (chosen.get('aired') or '').strip()
+            year = (chosen.get('year') or parsed.get('year') or '')
             date_str = aired or (str(year) if year else '')
-            genres = chosen.get('genres', [])
-            cast = chosen.get('cast', [])
-            imdb_id = chosen.get('imdb_id', '')
-            content_rating = chosen.get('content_rating', '')
+            genres = chosen.get('genres') or []
+            cast = chosen.get('cast') or []
+            imdb_id = (chosen.get('imdb_id') or '').strip()
+            content_rating = (chosen.get('content_rating') or '').strip()
 
             if title or description or synopsis or genres or cast:
                 root = ET.Element('Tags')
@@ -4625,12 +4631,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 if preserve_src and not needs_remux:
                     b, ext = os.path.splitext(mkv_path)
                     out_file = f"{b}_COPY{ext}"
-                    try:
-                        shutil.copy2(mkv_path, out_file)
+                    # Use mkvmerge (not shutil.copy2) so the output is a clean MKV
+                    # that mkvpropedit can always modify in-place without errors
+                    proc_copy = run_hidden([mkvmerge, "-o", out_file, mkv_path])
+                    if proc_copy.returncode in (0, 1) and os.path.exists(out_file):
                         current_file = out_file
-                        self._bp_log("  source préservée → copie créée")
-                    except Exception as e:
-                        self._bp_log(f"  ⚠️ copie source échouée ({e}), traitement en place")
+                        self._bp_log("  source préservée → copie propre créée")
+                    else:
+                        self._bp_log(f"  ⚠️ copie source échouée (code {proc_copy.returncode}), traitement en place")
 
                 # Single-pass mkvmerge (sync + reorder)
                 if needs_remux:
