@@ -123,6 +123,25 @@ SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
 PRESETS_FILE = os.path.join(APP_DIR, "presets.json")
 LOG_FILE = os.path.join(APP_DIR, "pymkvpropedit.log")
 
+# XML 1.0 invalid control chars (C0 except tab/LF/CR, DEL, C1 controls, BOM/non-chars).
+# A single one of these anywhere makes mkvpropedit reject the WHOLE tags XML,
+# so all tags silently disappear while attachments still get added.
+_XML_INVALID_BYTES = (
+    list(range(0x00, 0x09)) + [0x0b, 0x0c] + list(range(0x0e, 0x20)) +
+    list(range(0x7f, 0xa0)) + list(range(0x200b, 0x2010)) +
+    [0x2028, 0x2029] + list(range(0x202a, 0x202f)) +
+    [0x2060, 0xfeff, 0xfffe, 0xffff]
+)
+_XML_INVALID_RE = re.compile('[' + ''.join(chr(c) for c in _XML_INVALID_BYTES) + ']')
+
+
+def xml_safe_text(text):
+    """Strip XML-invalid / invisible control chars so mkvpropedit accepts the tags."""
+    if not text:
+        return text
+    return _XML_INVALID_RE.sub('', str(text)).strip()
+
+
 LANGUAGES = [
     'eng (English)', 'fra (French)', 'jpn (Japanese)', 'spa (Spanish)', 'deu (German)',
     'ita (Italian)', 'por (Portuguese)', 'rus (Russian)', 'chi (Chinese)', 'ara (Arabic)',
@@ -4243,15 +4262,15 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
     def _generate_kodi_nfo(self, parsed, chosen, series_title=''):
         """Generate Kodi-compatible NFO XML string (episodedetails or movie)."""
-        ep_title = chosen.get('episode_name', '') or chosen.get('name', '')
-        description = chosen.get('description', '')
-        synopsis = chosen.get('synopsis', description)
-        aired = chosen.get('aired', '')
+        ep_title = xml_safe_text(chosen.get('episode_name') or chosen.get('name') or '')
+        description = xml_safe_text(chosen.get('description') or '')
+        synopsis = xml_safe_text(chosen.get('synopsis') or description)
+        aired = xml_safe_text(chosen.get('aired') or '')
         year = chosen.get('year', '') or parsed.get('year', '')
-        genres = chosen.get('genres', [])
-        cast = chosen.get('cast', [])
-        imdb_id = chosen.get('imdb_id', '')
-        content_rating = chosen.get('content_rating', '')
+        genres = chosen.get('genres') or []
+        cast = chosen.get('cast') or []
+        imdb_id = xml_safe_text(chosen.get('imdb_id') or '')
+        content_rating = xml_safe_text(chosen.get('content_rating') or '')
 
         if parsed.get('kind') == 'series':
             root = ET.Element('episodedetails')
@@ -4311,8 +4330,8 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
         if not ep_title and not description and not genres:
             return None  # nothing meaningful to embed
-        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-                + ET.tostring(root, encoding='unicode'))
+        body = _XML_INVALID_RE.sub('', ET.tostring(root, encoding='unicode'))
+        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + body)
 
     def _embed_metadata_to_file(self, mkv_path, chosen, parsed):
         """Embed MKV tags, cover art and Kodi NFO via mkvpropedit (restored f60b167 flow)."""
@@ -4359,9 +4378,12 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 targets = ET.SubElement(tag_el, 'Targets')
                 ET.SubElement(targets, 'TargetTypeValue').text = '50'
                 def _simple(name, value):
+                    val = xml_safe_text(value)
+                    if not val:
+                        return
                     s = ET.SubElement(tag_el, 'Simple')
                     ET.SubElement(s, 'Name').text = name
-                    ET.SubElement(s, 'String').text = value
+                    ET.SubElement(s, 'String').text = val
                 if title:
                     _simple('TITLE', title)
                 if description:
@@ -4408,7 +4430,8 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 if imdb_id:
                     _simple('IMDB', imdb_id)
 
-                xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='unicode')
+                xml_body = _XML_INVALID_RE.sub('', ET.tostring(root, encoding='unicode'))
+                xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body
                 tf = tempfile.NamedTemporaryFile(suffix='.xml', delete=False, mode='w', encoding='utf-8')
                 tf.write(xml_str)
                 tf.close()
