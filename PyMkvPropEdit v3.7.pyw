@@ -4340,6 +4340,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
             return
 
+        logger.info(f"BatchPro embed chosen keys for {os.path.basename(mkv_path)}: "
+                    f"{ {k: (len(str(v)) if v else 0) for k, v in chosen.items()} }")
+
         # Pre-pass: delete old attachments in a SEPARATE call (as in the working
         # f60b167 release). Combining delete + add in one call broke some files.
         if chosen.get('clean_tags', True):
@@ -4437,6 +4440,13 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
+                # DEBUG: persist the exact generated tags XML for inspection
+                try:
+                    with open(os.path.join(APP_DIR, 'last_tags_debug.xml'), 'w', encoding='utf-8') as _dbg:
+                        _dbg.write(xml_str)
+                except Exception:
+                    pass
+                logger.info(f"BatchPro embed tags XML ({len(xml_str)} chars) for {os.path.basename(mkv_path)}:\n{xml_str}")
                 self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
                              f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
 
@@ -4477,10 +4487,17 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             # ── ONE mkvpropedit call for everything ───────────────────────────
             if len(args) > 2:
                 proc = run_hidden(args)
+                logger.info(f"BatchPro embed mkvpropedit RC={proc.returncode} args={args}")
+                if proc.stdout:
+                    logger.info(f"BatchPro embed stdout: {proc.stdout}")
+                if proc.stderr:
+                    logger.info(f"BatchPro embed stderr: {proc.stderr}")
                 if proc.returncode in (0, 1):
-                    self._bp_log("  meta: intégrée OK")
+                    self._bp_log(f"  meta: intégrée OK (code {proc.returncode})")
                 else:
                     self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode} — stderr: {proc.stderr[:200] if proc.stderr else ''}")
+            else:
+                self._bp_log("  ⚠️ meta: aucun tag/attachment à écrire (args vides)")
         finally:
             for f in temp_files:
                 safe_remove(f)
