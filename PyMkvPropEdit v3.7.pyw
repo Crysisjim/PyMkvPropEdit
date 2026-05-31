@@ -4340,9 +4340,6 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             self._bp_log("  ⚠️ embed meta: mkvpropedit introuvable")
             return
 
-        logger.info(f"BatchPro embed chosen keys for {os.path.basename(mkv_path)}: "
-                    f"{ {k: (len(str(v)) if v else 0) for k, v in chosen.items()} }")
-
         # Pre-pass: delete old attachments in a SEPARATE call (as in the working
         # f60b167 release). Combining delete + add in one call broke some files.
         if chosen.get('clean_tags', True):
@@ -4380,6 +4377,12 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tag_el = ET.SubElement(root, 'Tag')
                 targets = ET.SubElement(tag_el, 'Targets')
                 ET.SubElement(targets, 'TargetTypeValue').text = '50'
+                # CRITICAL: add a TargetType string. mkvpropedit strips TargetTypeValue=50
+                # (the default value), leaving <Targets/> empty — which makes MediaInfo/VLC
+                # IGNORE all global tags. The TargetType string is never stripped, so Targets
+                # stays non-empty and players read the tags. Without this, tags are written
+                # but invisible in MediaInfo (the long-standing "tags missing" bug).
+                ET.SubElement(targets, 'TargetType').text = 'MOVIE'
                 def _simple(name, value):
                     val = xml_safe_text(value)
                     if not val:
@@ -4440,13 +4443,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 tf.close()
                 temp_files.append(tf.name)
                 args += ['--tags', f'all:{tf.name}']
-                # DEBUG: persist the exact generated tags XML for inspection
-                try:
-                    with open(os.path.join(APP_DIR, 'last_tags_debug.xml'), 'w', encoding='utf-8') as _dbg:
-                        _dbg.write(xml_str)
-                except Exception:
-                    pass
-                logger.info(f"BatchPro embed tags XML ({len(xml_str)} chars) for {os.path.basename(mkv_path)}:\n{xml_str}")
+                logger.debug(f"BatchPro embed tags XML ({len(xml_str)} chars) for {os.path.basename(mkv_path)}")
                 self._bp_log(f"  meta: tags title={title[:40]!r} desc={len(description)}c "
                              f"genres={genres[:2]} cover={'✓' if cover_url else '✗'}")
 
@@ -4487,13 +4484,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             # ── ONE mkvpropedit call for everything ───────────────────────────
             if len(args) > 2:
                 proc = run_hidden(args)
-                logger.info(f"BatchPro embed mkvpropedit RC={proc.returncode} args={args}")
-                if proc.stdout:
-                    logger.info(f"BatchPro embed stdout: {proc.stdout}")
+                logger.debug(f"BatchPro embed mkvpropedit RC={proc.returncode}")
                 if proc.stderr:
-                    logger.info(f"BatchPro embed stderr: {proc.stderr}")
+                    logger.debug(f"BatchPro embed stderr: {proc.stderr}")
                 if proc.returncode in (0, 1):
-                    self._bp_log(f"  meta: intégrée OK (code {proc.returncode})")
+                    self._bp_log("  meta: intégrée OK")
                 else:
                     self._bp_log(f"  ⚠️ meta: mkvpropedit code {proc.returncode} — stderr: {proc.stderr[:200] if proc.stderr else ''}")
             else:
