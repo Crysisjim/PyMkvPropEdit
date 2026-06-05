@@ -3408,25 +3408,27 @@ class MetadataPickerDialog(tk.Toplevel):
                                       variable=self.cover_var, value=pname)
             r_cover.pack(anchor='w')
 
-            # Description
-            desc = meta.get('description', '')
+            # Description courte = tagline (movies) / episode description (series)
+            short_desc = meta.get('short_description', '') or ''
+            long_desc  = meta.get('description', '') or ''
+            # If no distinct short, fall back to long so the box is never empty
+            short_display = short_desc if short_desc else long_desc
             tk.Label(col, text=T('bp_picker_desc') + ":",
                      font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
             desc_box = tk.Text(col, height=3, wrap='word', font=("Arial", 8),
                                relief='flat', bg='#f8f8f8')
-            desc_box.insert('1.0', desc)
+            desc_box.insert('1.0', short_display)
             desc_box.config(state='disabled')
             desc_box.pack(fill='x', pady=2)
             ttk.Radiobutton(col, text="Utiliser cette description",
                             variable=self.desc_var, value=pname).pack(anchor='w')
 
-            # Long synopsis — use description if provider has only one field
-            # TVDB/TMDB both expose overview as description; use same or leave empty
+            # Synopsis long = overview (always the full long text)
             tk.Label(col, text=T('bp_picker_synopsis') + ":",
                      font=("Arial", 8, "bold")).pack(anchor='w', pady=(6, 0))
             syn_box = tk.Text(col, height=5, wrap='word', font=("Arial", 8),
                               relief='flat', bg='#f8f8f8')
-            syn_box.insert('1.0', desc)   # same field — user can edit after if needed
+            syn_box.insert('1.0', long_desc)
             syn_box.config(state='disabled')
             syn_box.pack(fill='x', pady=2)
             ttk.Radiobutton(col, text="Utiliser ce synopsis",
