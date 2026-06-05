@@ -117,7 +117,7 @@ if getattr(_sys, 'frozen', False):
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
     _ASSET_DIR = APP_DIR
-VERSION = "3.7"
+VERSION = "3.8"
 
 SETTINGS_FILE = os.path.join(APP_DIR, "pymkvpropedit_settings.json")
 PRESETS_FILE = os.path.join(APP_DIR, "presets.json")
@@ -140,6 +140,21 @@ def xml_safe_text(text):
     if not text:
         return text
     return _XML_INVALID_RE.sub('', str(text)).strip()
+
+
+# ISO 639-2 bibliographic (B) → terminologic (T) aliases, so 'fre' == 'fra', etc.
+_LANG_ALIAS = {
+    'fre': 'fra', 'ger': 'deu', 'dut': 'nld', 'gre': 'ell', 'chi': 'zho',
+    'cze': 'ces', 'ice': 'isl', 'may': 'msa', 'per': 'fas', 'rum': 'ron',
+    'slo': 'slk', 'alb': 'sqi', 'arm': 'hye', 'baq': 'eus', 'bur': 'mya',
+    'geo': 'kat', 'tib': 'bod', 'wel': 'cym', 'mac': 'mkd', 'mao': 'mri',
+}
+
+
+def norm_lang(code):
+    """Canonicalize a language code (B/T alias + lowercase) for comparisons."""
+    c = (code or '').lower().strip()
+    return _LANG_ALIAS.get(c, c)
 
 
 LANGUAGES = [
@@ -1344,6 +1359,8 @@ class TMDBProvider:
         result = {
             'name': data.get("title", ""),
             'description': data.get("overview", ""),
+            # tagline = short marketing line (MetaX "Short Description"); overview = long.
+            'short_description': data.get("tagline", ""),
             'poster_url': f"https://image.tmdb.org/t/p/original{poster}" if poster else "",
             'genres': [g['name'] for g in data.get('genres', []) if g.get('name')],
             'aired': data.get("release_date", ""),
@@ -3724,8 +3741,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
         tt_frame = tk.Frame(sec3)
         tt_frame.pack(fill='both', expand=True, pady=2)
-        tcols = ('track', 'type', 'codec', 'lang', 'name', 'forced', 'default')
+        tcols = ('incl', 'track', 'type', 'codec', 'lang', 'name', 'forced', 'default')
         self.track_tree = ttk.Treeview(tt_frame, columns=tcols, show='headings', height=5)
+        self.track_tree.heading('incl', text='✓')
         self.track_tree.heading('track', text=T('bp_col_track'))
         self.track_tree.heading('type', text=T('bp_col_type'))
         self.track_tree.heading('codec', text=T('bp_col_codec'))
@@ -3733,17 +3751,20 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.heading('name', text=T('bp_col_name_tr'))
         self.track_tree.heading('forced', text=T('bp_col_forced'))
         self.track_tree.heading('default', text=T('bp_col_default'))
+        self.track_tree.column('incl', width=32, anchor='center')
         self.track_tree.column('track', width=45, anchor='center')
         self.track_tree.column('type', width=80, anchor='center')
         self.track_tree.column('codec', width=70, anchor='center')
         self.track_tree.column('lang', width=60, anchor='center')
-        self.track_tree.column('name', width=240)
+        self.track_tree.column('name', width=215)
         self.track_tree.column('forced', width=55, anchor='center')
         self.track_tree.column('default', width=60, anchor='center')
         self.track_tree.pack(side='left', fill='both', expand=True)
         sb3 = ttk.Scrollbar(tt_frame, orient='vertical', command=self.track_tree.yview)
         sb3.pack(side='right', fill='y')
         self.track_tree.configure(yscrollcommand=sb3.set)
+        # Click on the "✓" column toggles whether the track is kept in the output
+        self.track_tree.bind('<Button-1>', self._on_track_incl_click)
 
         paned.add(sec3, minsize=90, height=155)
 
@@ -3761,6 +3782,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.bp_rename_var = tk.BooleanVar(value=settings.get('bp_rename', True))
         ttk.Checkbutton(opts, text=T('bp_chk_sync'), variable=self.bp_sync_var).pack(side='left', padx=6)
         ttk.Checkbutton(opts, text="+ sous-titres", variable=self.bp_sync_subs_var).pack(side='left', padx=0)
+        # Subtitle languages that receive the audio sync offset.
+        # 'Toutes' (string) = all langs; otherwise a list of language codes.
+        _saved_sl = settings.get('bp_sync_subs_langs', 'Toutes')
+        self.bp_sync_subs_langs = list(_saved_sl) if isinstance(_saved_sl, list) else 'Toutes'
+        self.bp_subs_lang_btn = tk.Button(opts, text="langues ▾", bg='#e1e1e1',
+                                          font=("Arial", 8), command=self._open_subs_lang_dialog)
+        self.bp_subs_lang_btn.pack(side='left', padx=(2, 0))
+        self._update_subs_lang_btn()
         ttk.Separator(opts, orient='vertical').pack(side='left', fill='y', padx=6)
         ttk.Checkbutton(opts, text=T('bp_chk_props'), variable=self.bp_props_var).pack(side='left', padx=6)
         ttk.Checkbutton(opts, text=T('bp_chk_reorder'), variable=self.bp_reorder_var).pack(side='left', padx=6)
@@ -3785,6 +3814,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         tk.Label(srow2, text=T('lbl_batch_start')).pack(side='left', padx=(10, 0))
         self.bp_start_var = tk.StringVar(value=settings.get('bp_start', settings.get('audio_sync_start', "300")))
         tk.Entry(srow2, textvariable=self.bp_start_var, width=5).pack(side='left', padx=5)
+        # Manual subtitle offset (ms) — apply a fixed shift to the selected sub langs.
+        # Use a negative value to UNDO a previous sync (e.g. -960). Forces a remux.
+        tk.Label(srow2, text="Décalage subs (ms) :").pack(side='left', padx=(12, 0))
+        self.bp_subs_offset_var = tk.StringVar(value=settings.get('bp_subs_offset', "0"))
+        tk.Entry(srow2, textvariable=self.bp_subs_offset_var, width=6).pack(side='left', padx=3)
 
         out_row = tk.Frame(sec4)
         out_row.pack(fill='x', pady=1)
@@ -3996,7 +4030,8 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                             mv_meta = resolver.resolve_movie_meta(chosen['provider'], chosen['id'])
                             chosen['description'] = mv_meta.get('description', '')
                             chosen['cover_url'] = mv_meta.get('poster_url', '')
-                            for _k in ('genres', 'cast', 'imdb_id', 'content_rating', 'aired'):
+                            for _k in ('genres', 'cast', 'imdb_id', 'content_rating', 'aired',
+                                       'short_description'):
                                 if mv_meta.get(_k):
                                     chosen[_k] = mv_meta[_k]
                         status = f"✓ {chosen.get('provider', '?')}"
@@ -4086,7 +4121,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.delete(*self.track_tree.get_children())
         for t in tracks:
             self.track_tree.insert('', 'end', iid=str(t['id']),
-                                   values=(t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
+                                   values=('☑', t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
                                            '✓' if t['forced'] else '',
                                            '✓' if t.get('default') else ''))
 
@@ -4098,7 +4133,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.delete(*self.track_tree.get_children())
         for t in tracks:
             self.track_tree.insert('', 'end', iid=str(t['id']),
-                                   values=(t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
+                                   values=('☑', t['id'], t['type'], t.get('codec', ''), t['lang'], t['name'],
                                            '✓' if t['forced'] else '',
                                            '✓' if t.get('default') else ''))
 
@@ -4113,27 +4148,45 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         if 0 <= new_idx < len(children):
             self.track_tree.move(item, '', new_idx)
 
+    def _on_track_incl_click(self, event):
+        """Toggle the include (✓) checkbox when the first column is clicked."""
+        if self.track_tree.identify_region(event.x, event.y) != 'cell':
+            return
+        if self.track_tree.identify_column(event.x) != '#1':  # 'incl' column
+            return
+        item = self.track_tree.identify_row(event.y)
+        if not item:
+            return
+        vals = list(self.track_tree.item(item, 'values'))
+        vals[0] = '☐' if vals[0] == '☑' else '☑'
+        self.track_tree.item(item, values=vals)
+        return 'break'
+
     def _build_track_template(self):
-        """Read the current track_tree order into a matching template."""
+        """Read the current track_tree order into a matching template.
+        'included' = whether the track is kept in the output (✓ checkbox)."""
         template = []
         for item in self.track_tree.get_children():
             vals = self.track_tree.item(item, 'values')
             template.append({
-                'type': vals[1],
-                'lang': vals[3],
-                'forced': vals[5] == '✓',
+                'included': vals[0] == '☑',
+                'type': vals[2],
+                'lang': vals[4],
+                'forced': vals[6] == '✓',
             })
         return template
 
     def _compute_track_order(self, file_tracks, template):
         """Match file tracks to template order.
-        Returns (ordered_ids, unmatched_tmpl, extra_tracks).
+        Returns (ordered_ids, unmatched_tmpl, extra_tracks, excluded_ids).
         unmatched_tmpl = template entries absent from this file.
         extra_tracks   = file tracks not in template (appended at end).
+        excluded_ids   = file tracks matched by an UNCHECKED template entry → dropped.
         """
         used = set()
         ordered_ids = []
         unmatched_tmpl = []
+        excluded_ids = []
         for tmpl in template:
             matched = False
             for t in file_tracks:
@@ -4141,9 +4194,12 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                     continue
                 if (t['type'] == tmpl['type'] and t['lang'] == tmpl['lang']
                         and t['forced'] == tmpl['forced']):
-                    ordered_ids.append(t['id'])
                     used.add(t['id'])
                     matched = True
+                    if tmpl.get('included', True):
+                        ordered_ids.append(t['id'])
+                    else:
+                        excluded_ids.append(t['id'])  # unchecked → drop from output
                     break
             if not matched:
                 unmatched_tmpl.append(tmpl)
@@ -4154,7 +4210,22 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                 ordered_ids.append(t['id'])
                 used.add(t['id'])
                 extra_tracks.append(t)
-        return ordered_ids, unmatched_tmpl, extra_tracks
+        return ordered_ids, unmatched_tmpl, extra_tracks, excluded_ids
+
+    def _build_drop_args(self, file_tracks, exclude_ids):
+        """mkvmerge flags to drop the given track IDs from the output (by type)."""
+        id2type = {t['id']: t['type'] for t in file_tracks}
+        by_type = {'video': [], 'audio': [], 'subtitles': []}
+        for tid in exclude_ids:
+            ty = id2type.get(tid)
+            if ty in by_type:
+                by_type[ty].append(str(tid))
+        flagmap = {'video': '-d', 'audio': '-a', 'subtitles': '-s'}
+        args = []
+        for ty, ids in by_type.items():
+            if ids:
+                args += [flagmap[ty], '!' + ','.join(ids)]
+        return args
 
     # ---- Metadata embedding ----
     def _apply_picker_prefs(self, filepath, chosen, prefs):
@@ -4255,16 +4326,33 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                         text = ep_meta.get('description', '')
                         if text:
                             chosen[chosen_key] = text
+                        # Movies: carry the tagline as the real short description
+                        if ep_meta.get('short_description'):
+                            chosen['short_description'] = ep_meta['short_description']
                 except Exception as e:
                     logger.debug(f"Prefs {chosen_key} fetch: {e}")
 
         return chosen
 
+    def _count_seekheads(self, path):
+        """Count SeekHead elements (locale-agnostic via --ui-language en). >1 means
+        mkvpropedit appended data the first SeekHead does not index → MediaInfo blind."""
+        try:
+            mkvmerge = self.parent_app.mkvmerge_path_entry.get()
+            mkvinfo = os.path.join(os.path.dirname(mkvmerge), 'mkvinfo.exe')
+            if not os.path.exists(mkvinfo):
+                return 1  # can't check → assume OK
+            res = run_hidden([mkvinfo, '--ui-language', 'en', path])
+            return (res.stdout or '').count('Seek head')
+        except Exception:
+            return 1
+
     def _generate_kodi_nfo(self, parsed, chosen, series_title=''):
         """Generate Kodi-compatible NFO XML string (episodedetails or movie)."""
         ep_title = xml_safe_text(chosen.get('episode_name') or chosen.get('name') or '')
-        description = xml_safe_text(chosen.get('description') or '')
-        synopsis = xml_safe_text(chosen.get('synopsis') or description)
+        # outline (NFO) = short (tagline/episode), plot = long (overview/synopsis)
+        description = xml_safe_text(chosen.get('short_description') or chosen.get('description') or '')
+        synopsis = xml_safe_text(chosen.get('synopsis') or chosen.get('description') or description)
         aired = xml_safe_text(chosen.get('aired') or '')
         year = chosen.get('year', '') or parsed.get('year', '')
         genres = chosen.get('genres') or []
@@ -4350,8 +4438,12 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         # ── Parse chosen fields (guard against None) ──────────────────────────
         title = (chosen.get('episode_name') or chosen.get('name') or '').strip()
         series_title = (chosen.get('name') or '') if parsed.get('kind') == 'series' else ''
-        description = (chosen.get('description') or '').strip()
-        synopsis = (chosen.get('synopsis') or description).strip()
+        # MetaX mapping: short (tagline for movies / episode desc for series) → SUMMARY/DESCRIPTION,
+        # long (overview / synopsis) → SYNOPSIS. tagline comes from TMDB 'short_description'.
+        long_desc = (chosen.get('synopsis') or chosen.get('description') or '').strip()
+        short_desc = (chosen.get('short_description') or '').strip() or (chosen.get('description') or '').strip()
+        description = short_desc
+        synopsis = long_desc
         aired = (chosen.get('aired') or '').strip()
         year = (chosen.get('year') or parsed.get('year') or '')
         date_str = aired or (str(year) if year else '')
@@ -4471,6 +4563,72 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             safe_remove(f)
         return None
 
+    # ---- Subtitle sync language selection ----
+    def _update_subs_lang_btn(self):
+        sl = self.bp_sync_subs_langs
+        if sl == 'Toutes':
+            txt = "subs: toutes"
+        elif not sl:
+            txt = "subs: aucune"
+        else:
+            txt = "subs: " + ",".join(sl[:3]) + ("…" if len(sl) > 3 else "")
+        self.bp_subs_lang_btn.config(text=txt + " ▾")
+
+    def _subs_lang_synced(self, lang):
+        """True if a subtitle of this language should receive the offset.
+        Language codes are normalized so 'fre' matches 'fra', 'ger' matches 'deu', etc."""
+        sl = self.bp_sync_subs_langs
+        if sl == 'Toutes':
+            return True
+        n = norm_lang(lang)
+        return any(norm_lang(x) == n for x in sl)
+
+    def _open_subs_lang_dialog(self):
+        dlg = tk.Toplevel(self)
+        dlg.title("Langues sous-titres à synchroniser")
+        dlg.transient(self.winfo_toplevel())
+        langs = ['fra', 'eng', 'jpn', 'spa', 'deu', 'ita', 'por', 'ara', 'kor', 'chi', 'rus', 'und']
+        try:
+            for f in list(self.file_list.get(0, tk.END))[:20]:
+                for t in self._load_full_tracks(f):
+                    if t['type'] == 'subtitles' and t['lang'] not in langs:
+                        langs.append(t['lang'])
+        except Exception:
+            pass
+        cur = self.bp_sync_subs_langs
+        all_on = (cur == 'Toutes')
+        vars_map = {}
+        master = tk.BooleanVar(value=all_on)
+
+        def _toggle_master():
+            for v in vars_map.values():
+                v.set(master.get())
+
+        tk.Label(dlg, text="Cocher les langues de sous-titres qui reçoivent le décalage audio.",
+                 fg='gray', font=("Arial", 8, "italic")).pack(anchor='w', padx=10, pady=(8, 2))
+        tk.Checkbutton(dlg, text="Toutes les langues", variable=master,
+                       command=_toggle_master, font=("Arial", 9, "bold")).pack(anchor='w', padx=10)
+        ttk.Separator(dlg, orient='horizontal').pack(fill='x', padx=8, pady=3)
+        grid = tk.Frame(dlg)
+        grid.pack(padx=10, pady=4)
+        for i, lg in enumerate(langs):
+            on = all_on or (isinstance(cur, list) and lg in cur)
+            v = tk.BooleanVar(value=on)
+            vars_map[lg] = v
+            tk.Checkbutton(grid, text=lg, variable=v).grid(row=i // 4, column=i % 4, sticky='w', padx=6)
+
+        def _ok():
+            sel = [lg for lg, v in vars_map.items() if v.get()]
+            self.bp_sync_subs_langs = 'Toutes' if (master.get() and len(sel) == len(vars_map)) else sel
+            self._update_subs_lang_btn()
+            dlg.destroy()
+
+        bf = tk.Frame(dlg)
+        bf.pack(pady=8)
+        tk.Button(bf, text="OK", command=_ok, bg='#008000', fg='white', width=10).pack(side='left', padx=4)
+        tk.Button(bf, text="Annuler", command=dlg.destroy, width=10).pack(side='left', padx=4)
+        dlg.geometry("+%d+%d" % (self.winfo_rootx() + 200, self.winfo_rooty() + 150))
+
     # ---- Pipeline execution ----
     def _run_pipeline(self):
         files = list(self.file_list.get(0, tk.END))
@@ -4487,6 +4645,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
     def _pipeline_worker(self, files):
         do_sync = self.bp_sync_var.get()
         do_sync_subs = self.bp_sync_subs_var.get()
+        # subtitle languages selection: 'Toutes' or a list of codes ([] = none)
+        if self.bp_sync_subs_langs != 'Toutes' and not self.bp_sync_subs_langs:
+            do_sync_subs = False
         do_props = self.bp_props_var.get()
         do_reorder = self.bp_reorder_var.get()
         do_rename = self.bp_rename_var.get()
@@ -4545,12 +4706,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                                         if td is not None:
                                             t["delay"] = self.calculate_delay(ref_data, td)
                                             t["processed"] = True
-                                # Apply to subtitles same lang (if checkbox checked)
+                                # Apply to subtitles same lang (if checkbox checked).
+                                # Only languages selected in the subs-langs dialog get the offset.
                                 if do_sync_subs:
                                     lang_delays = {t["lang"]: t["delay"] for t in tracks_data
                                                    if t["type"] == "audio" and t.get("processed")}
                                     for t in tracks_data:
-                                        if t["type"] == "subtitles" and t["lang"] in lang_delays:
+                                        if (t["type"] == "subtitles" and t["lang"] in lang_delays
+                                                and self._subs_lang_synced(t["lang"])):
                                             t["delay"] = lang_delays[t["lang"]]
                                             t["processed"] = True
                                 for t in tracks_data:
@@ -4564,93 +4727,200 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                     if sync_flags:
                         needs_remux = True
 
+                # Manual subtitle offset — apply a fixed shift to the selected sub langs.
+                # Negative value undoes a previous sync (e.g. -960). Independent of audio sync.
+                try:
+                    manual_subs_offset = int(self.bp_subs_offset_var.get() or 0)
+                except ValueError:
+                    manual_subs_offset = 0
+                if manual_subs_offset != 0:
+                    already_ids = set()
+                    for _i in range(len(sync_flags) - 1):
+                        if sync_flags[_i] == "--sync":
+                            already_ids.add(sync_flags[_i + 1].split(':')[0])
+                    td = self.load_mkv_tracks(mkv_path, mkvmerge)
+                    applied = []
+                    for t in (td or []):
+                        if (t["type"] == "subtitles" and self._subs_lang_synced(t["lang"])
+                                and str(t["id"]) not in already_ids):
+                            sync_flags += ["--sync", f"{t['id']}:{manual_subs_offset}"]
+                            applied.append(f"trk{t['id']}/{t['lang']}")
+                    if applied:
+                        needs_remux = True
+                        sign = "+" if manual_subs_offset > 0 else ""
+                        self._bp_log(f"  décalage subs manuel {sign}{manual_subs_offset}ms: {', '.join(applied)}")
+
                 # Compute reorder
+                exclude_ids = []
                 if do_reorder and template:
                     file_tracks = self._load_full_tracks(mkv_path)
-                    ordered_ids, unmatched_tmpl, extra_tracks = self._compute_track_order(file_tracks, template)
+                    ordered_ids, unmatched_tmpl, extra_tracks, exclude_ids = \
+                        self._compute_track_order(file_tracks, template)
                     if unmatched_tmpl:
                         desc = ", ".join(f"{t['type']}/{t['lang']}" for t in unmatched_tmpl)
                         self._bp_log(f"  ⚠️ pistes template absentes de ce fichier: {desc}")
                     if extra_tracks:
                         desc = ", ".join(f"{t['type']}/{t['lang']}" for t in extra_tracks)
                         self._bp_log(f"  ℹ️ pistes hors template ajoutées en fin: {desc}")
-                    # Only remux if order actually differs
-                    if ordered_ids != [t['id'] for t in file_tracks]:
+                    # Excluded tracks (unchecked ✓) → must remux to drop them
+                    if exclude_ids:
+                        order_arg = order_arg + self._build_drop_args(file_tracks, exclude_ids)
+                        needs_remux = True
+                        desc = ", ".join(f"trk{i}" for i in exclude_ids)
+                        self._bp_log(f"  ✂️ pistes exclues du fichier final: {desc}")
+                    # Only remux if order actually differs (or tracks excluded)
+                    kept = [t['id'] for t in file_tracks if t['id'] not in exclude_ids]
+                    if ordered_ids != kept:
                         order_str = ",".join(f"0:{tid}" for tid in ordered_ids)
-                        order_arg = ["--track-order", order_str]
+                        order_arg = ["--track-order", order_str] + order_arg
                         needs_remux = True
                         self._bp_log(f"  réordonnancement: {order_str}")
-                    else:
+                    elif not exclude_ids:
                         self._bp_log("  ordre pistes: déjà correct, pas de remux nécessaire")
 
-                # Preserve source: if no remux planned but user wants source kept,
-                # create a fast copy so we process the copy and leave source intact.
-                if preserve_src and not needs_remux:
-                    b, ext = os.path.splitext(mkv_path)
-                    out_file = f"{b}_COPY{ext}"
-                    # Use mkvmerge (not shutil.copy2) so the output is a clean MKV
-                    # that mkvpropedit can always modify in-place without errors
-                    proc_copy = run_hidden([mkvmerge, "-o", out_file, mkv_path])
-                    if proc_copy.returncode in (0, 1) and os.path.exists(out_file):
-                        current_file = out_file
-                        self._bp_log("  source préservée → copie propre créée")
-                    else:
-                        self._bp_log(f"  ⚠️ copie source échouée (code {proc_copy.returncode}), traitement en place")
-
-                # Single-pass mkvmerge (sync + reorder)
-                if needs_remux:
-                    b, ext = os.path.splitext(mkv_path)
-                    out_file = f"{b}_PRO{ext}"
-                    cmd = [mkvmerge, "-o", out_file] + sync_flags + order_arg + [mkv_path]
-                    proc = run_hidden(cmd)
-                    if proc.returncode in (0, 1) and os.path.exists(out_file):
-                        current_file = out_file
-                        self._bp_log("  remux OK")
-                    else:
-                        self._bp_log(f"  ⚠️ remux échec (code {proc.returncode})")
-
-                # mkvpropedit params
-                if do_props:
-                    success, msg = self.apply_mkvpropedit_to_file(current_file, self.parent_app)
-                    self._bp_log(f"  mkvpropedit: {msg or 'OK'}")
-
-                # Prepare metadata assets (tags + cover + kodi) — injected by final mkvmerge mux
+                # ── Prepare metadata assets FIRST (so a remux can embed them inline) ──
                 do_embed = self.bp_embed_meta_var.get()
                 embed_assets = None
+                chosen_embed = None
                 if do_embed and mkv_path in self.file_results:
                     res = self.file_results[mkv_path]
                     chosen_embed = dict(res.get('chosen', {}))
                     chosen_embed['clean_tags'] = self.bp_clean_tags_var.get()
-                    # If picker prefs exist, re-fetch per-episode content from chosen provider
                     prefs = self.meta_picker_prefs
                     if prefs:
                         chosen_embed = self._apply_picker_prefs(mkv_path, chosen_embed, prefs)
                     if chosen_embed.get('description') or chosen_embed.get('cover_url'):
-                        # Remove any pre-existing cover/kodi from the working file so the
-                        # final mux does not create duplicates (reprocessing case).
-                        if chosen_embed.get('clean_tags', True):
-                            mkvpropedit_p = self.parent_app.mkvpropedit_path_entry.get()
-                            if mkvpropedit_p and os.path.exists(mkvpropedit_p):
-                                del_args = [mkvpropedit_p, current_file]
-                                for an in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
-                                    del_args += ['--delete-attachment', f'name:{an}']
-                                try:
-                                    run_hidden(del_args)
-                                except Exception:
-                                    pass
                         embed_assets = self._prepare_metadata_assets(
-                            current_file, chosen_embed, res.get('parsed', {}))
+                            mkv_path, chosen_embed, res.get('parsed', {}))
                     else:
                         self._bp_log("  meta: pas de données (lancer 🔍 d'abord)")
 
-                # Finalize: rename + optional output directory
+                clean_tags = bool(chosen_embed.get('clean_tags', True)) if chosen_embed else True
+
+                def _attach_args(prefix_add):
+                    """Build attachment args (cover then kodi = MetaX order)."""
+                    a = []
+                    if embed_assets and embed_assets.get('cover_path'):
+                        a += ['--attachment-name', embed_assets['cover_name'],
+                              '--attachment-mime-type', embed_assets['cover_mime'],
+                              prefix_add, embed_assets['cover_path']]
+                    if embed_assets and embed_assets.get('nfo_path'):
+                        a += ['--attachment-name', 'kodi-metadata',
+                              '--attachment-mime-type', 'application/xml',
+                              prefix_add, embed_assets['nfo_path']]
+                    return a
+
+                embed_done = False
+
+                if not needs_remux:
+                    # ── No remux → METADATA IN PLACE (instant, single SeekHead) ──
+                    # CRITICAL ORDER (proven): attachments (cover+kodi) FIRST, tags SECOND, in
+                    # two separate mkvpropedit passes. The big cover is appended at the file tail;
+                    # the small tags then fit in the encoder's head void and stay indexed by the
+                    # single SeekHead → MediaInfo/VLC/MetaX read them. Writing tags before/with the
+                    # cover pushes the tags past the cover, out of the indexed area → invisible.
+                    if preserve_src:
+                        b, ext = os.path.splitext(mkv_path)
+                        out_file = f"{b}_COPY{ext}"
+                        try:
+                            shutil.copy2(mkv_path, out_file)  # fast byte copy keeps the void intact
+                            current_file = out_file
+                            self._bp_log("  source préservée → copie créée")
+                        except Exception as e:
+                            self._bp_log(f"  ⚠️ copie source échouée ({e}), traitement en place")
+
+                    if embed_assets:
+                        mkvpropedit_p = self.parent_app.mkvpropedit_path_entry.get()
+                        if mkvpropedit_p and os.path.exists(mkvpropedit_p):
+                            ok = True
+                            # 1) clean old cover/kodi + add new attachments (cover then kodi) FIRST
+                            att_args = [mkvpropedit_p, current_file]
+                            if clean_tags:
+                                for an in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                                    att_args += ['--delete-attachment', f'name:{an}']
+                            att_args += _attach_args('--add-attachment')
+                            if len(att_args) > 2:
+                                p1 = run_hidden(att_args)
+                                ok = p1.returncode in (0, 1)
+                                if not ok:
+                                    self._bp_log(f"  ⚠️ meta: attachments code {p1.returncode}")
+                            # 2) write tags SECOND (separate pass → stay in the head void → visible)
+                            if ok and embed_assets.get('tags_xml'):
+                                p2 = run_hidden([mkvpropedit_p, current_file,
+                                                 '--tags', f"all:{embed_assets['tags_xml']}"])
+                                ok = p2.returncode in (0, 1)
+                                if not ok:
+                                    self._bp_log(f"  ⚠️ meta: tags code {p2.returncode}")
+                            if ok:
+                                embed_done = True
+                                self._bp_log("  meta: intégrée en place (instantané)")
+                        for f in embed_assets.get('temp_files', []):
+                            safe_remove(f)
+                    elif clean_tags:
+                        # "Supprimer anciens tags/cover" coché SEUL (sans intégrer de métadonnées)
+                        # → wipe global tags + remove cover/kodi attachments, in place.
+                        mkvpropedit_p = self.parent_app.mkvpropedit_path_entry.get()
+                        if mkvpropedit_p and os.path.exists(mkvpropedit_p):
+                            ef = tempfile.NamedTemporaryFile(suffix='.xml', delete=False,
+                                                             mode='w', encoding='utf-8')
+                            ef.write('<?xml version="1.0" encoding="UTF-8"?>\n<Tags></Tags>')
+                            ef.close()
+                            clean_args = [mkvpropedit_p, current_file, '--tags', f'all:{ef.name}']
+                            for an in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'):
+                                clean_args += ['--delete-attachment', f'name:{an}']
+                            pc = run_hidden(clean_args)
+                            safe_remove(ef.name)
+                            if pc.returncode in (0, 1):
+                                self._bp_log("  tags/cover supprimés (nettoyage)")
+                            else:
+                                self._bp_log(f"  ⚠️ nettoyage code {pc.returncode}")
+
+                    # track params (names/langs/flags) AFTER metadata
+                    if do_props:
+                        success, msg = self.apply_mkvpropedit_to_file(current_file, self.parent_app)
+                        self._bp_log(f"  mkvpropedit: {msg or 'OK'}")
+                else:
+                    # ── Remux (sync/reorder) → integrate tags+attachments in the single pass ──
+                    b, ext = os.path.splitext(mkv_path)
+                    out_file = f"{b}_PRO{ext}"
+                    cmd = [mkvmerge, "-o", out_file] + sync_flags + order_arg
+                    if embed_assets:
+                        if clean_tags:
+                            try:
+                                jinfo = json.loads(run_hidden([mkvmerge, "-J", mkv_path]).stdout)
+                                excl = [str(a.get('id')) for a in jinfo.get('attachments', [])
+                                        if (a.get('file_name', '').lower()
+                                            in ('cover.jpg', 'cover.png', 'cover.jpeg', 'kodi-metadata'))]
+                                if excl:
+                                    cmd += ['--attachments', '!' + ','.join(excl)]
+                            except Exception:
+                                pass
+                        if embed_assets.get('tags_xml'):
+                            cmd += ['--global-tags', embed_assets['tags_xml']]
+                        cmd += _attach_args('--attach-file')
+                    cmd += [mkv_path]
+                    proc = run_hidden(cmd)
+                    if proc.returncode in (0, 1) and os.path.exists(out_file):
+                        current_file = out_file
+                        embed_done = bool(embed_assets)
+                        self._bp_log("  remux OK" + (" + métadonnées intégrées" if embed_assets else ""))
+                    else:
+                        self._bp_log(f"  ⚠️ remux échec (code {proc.returncode})")
+                    if embed_assets:
+                        for f in embed_assets.get('temp_files', []):
+                            safe_remove(f)
+                    # track params after remux
+                    if do_props:
+                        success, msg = self.apply_mkvpropedit_to_file(current_file, self.parent_app)
+                        self._bp_log(f"  mkvpropedit: {msg or 'OK'}")
+
+                # ── Finalize: rename / move (no mux) ──
                 final_name = os.path.basename(current_file)
                 if do_rename and mkv_path in self.file_results:
                     proposed = self.file_results[mkv_path].get('newname', '')
                     if proposed:
                         final_name = proposed
 
-                # Determine final directory
                 if use_output_dir:
                     final_dir = output_dir_path if output_dir_path else os.path.join(
                         os.path.dirname(mkv_path), "Batch Pro Output")
@@ -4664,7 +4934,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
                 final_path = os.path.join(final_dir, final_name)
 
-                # Compute a unique final_path (never overwrite an existing different file)
+                # Unique final_path (never overwrite a different existing file)
                 if (os.path.exists(final_path)
                         and os.path.abspath(final_path) != os.path.abspath(current_file)):
                     root_fp, ext_fp = os.path.splitext(final_path)
@@ -4674,61 +4944,15 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
                         counter += 1
                     self._bp_log(f"  ℹ️ destination existante → {os.path.basename(final_path)}")
 
-                if embed_assets:
-                    # Inject tags + cover + kodi via mkvmerge in ONE pass:
-                    #  - single clean SeekHead  → MediaInfo/VLC read the tags
-                    #  - empty <Targets/>       → MetaX reads the tags
-                    #  - cover/kodi before fonts → same attachment order as MetaX
-                    tmp_final = f"{os.path.splitext(current_file)[0]}_FINAL.mkv"
-                    mux = [mkvmerge, "-o", tmp_final]
-                    if embed_assets.get('tags_xml'):
-                        mux += ['--global-tags', embed_assets['tags_xml']]
-                    if embed_assets.get('cover_path'):
-                        mux += ['--attachment-name', embed_assets['cover_name'],
-                                '--attachment-mime-type', embed_assets['cover_mime'],
-                                '--attach-file', embed_assets['cover_path']]
-                    if embed_assets.get('nfo_path'):
-                        mux += ['--attachment-name', 'kodi-metadata',
-                                '--attachment-mime-type', 'application/xml',
-                                '--attach-file', embed_assets['nfo_path']]
-                    mux += [current_file]
-                    proc_mux = run_hidden(mux)
-                    for f in embed_assets.get('temp_files', []):
-                        safe_remove(f)
-                    if proc_mux.returncode in (0, 1) and os.path.exists(tmp_final):
-                        try:
-                            if os.path.abspath(current_file) != os.path.abspath(mkv_path) or not preserve_src:
-                                safe_remove(current_file)
-                        except Exception:
-                            pass
-                        try:
-                            os.replace(tmp_final, final_path)
-                            self._bp_log("  meta: intégrée (mkvmerge — ordre MetaX, SeekHead propre)")
-                            if final_name != base_name:
-                                self._bp_log(f"  renommé → {final_name}")
-                            if use_output_dir:
-                                self._bp_log(f"  → {final_dir}")
-                        except Exception as e:
-                            self._bp_log(f"  ⚠️ déplacement final échoué: {e}")
-                    else:
-                        self._bp_log(f"  ⚠️ intégration mkvmerge échec (code {proc_mux.returncode}) — fallback rename")
-                        safe_remove(tmp_final)
-                        try:
-                            if os.path.abspath(current_file) != os.path.abspath(final_path):
-                                os.rename(current_file, final_path)
-                        except Exception as e:
-                            self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
-                else:
-                    # No embed: simple move/rename
-                    if os.path.abspath(current_file) != os.path.abspath(final_path):
-                        try:
-                            os.rename(current_file, final_path)
-                            if final_name != os.path.basename(current_file):
-                                self._bp_log(f"  renommé → {final_name}")
-                            if use_output_dir:
-                                self._bp_log(f"  → {final_dir}")
-                        except Exception as e:
-                            self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
+                if os.path.abspath(current_file) != os.path.abspath(final_path):
+                    try:
+                        os.rename(current_file, final_path)
+                        if final_name != os.path.basename(mkv_path):
+                            self._bp_log(f"  renommé → {final_name}")
+                        if use_output_dir:
+                            self._bp_log(f"  → {final_dir}")
+                    except Exception as e:
+                        self._bp_log(f"  ⚠️ déplacement/renommage échoué: {e}")
 
                 self._bp_log(f"  ✓ terminé")
 
@@ -5189,6 +5413,8 @@ class PyMkvPropEdit:
             'bp_sync': self.batch_pro_app.bp_sync_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_sync_subs': self.batch_pro_app.bp_sync_subs_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_props': self.batch_pro_app.bp_props_var.get() if hasattr(self, 'batch_pro_app') else True,
+            'bp_sync_subs_langs': self.batch_pro_app.bp_sync_subs_langs if hasattr(self, 'batch_pro_app') else 'Toutes',
+            'bp_subs_offset': self.batch_pro_app.bp_subs_offset_var.get() if hasattr(self, 'batch_pro_app') else '0',
             'bp_reorder': self.batch_pro_app.bp_reorder_var.get() if hasattr(self, 'batch_pro_app') else False,
             'bp_rename': self.batch_pro_app.bp_rename_var.get() if hasattr(self, 'batch_pro_app') else True,
             'bp_embed_meta': self.batch_pro_app.bp_embed_meta_var.get() if hasattr(self, 'batch_pro_app') else False,

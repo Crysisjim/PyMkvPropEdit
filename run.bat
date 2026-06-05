@@ -1,7 +1,7 @@
 @echo off
-title PyMkvPropEdit v3.7 - Launcher
+title PyMkvPropEdit v3.8 - Launcher
 echo ============================================
-echo   PyMkvPropEdit v3.7 - Batch GUI mkvpropedit
+echo   PyMkvPropEdit v3.8 - Batch GUI mkvpropedit
 echo ============================================
 echo.
 

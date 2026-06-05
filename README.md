@@ -3,7 +3,7 @@
 
 # PyMkvPropEdit
 
-![Version](https://img.shields.io/badge/version-3.7-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.8-blue?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![MKVToolNix](https://img.shields.io/badge/MKVToolNix-bundled%20%2F%20system-orange?style=for-the-badge)
@@ -40,7 +40,7 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 
 > **Aucun Python requis** — `mkvpropedit`, `mkvmerge` et dépendances sont embarqués.
 
-1. **[📦 Télécharger PyMkvPropEdit v3.7 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Télécharger PyMkvPropEdit v3.8 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extraire le ZIP
 3. Double-cliquer **`PyMkvPropEdit.exe`**
 4. Au **premier lancement**, choisir entre MKVToolNix **intégré** (aucune installation requise) ou **système** (MKVToolNix déjà installé)
@@ -49,7 +49,7 @@ PyMkvPropEdit is an advanced **GUI for [`mkvpropedit`](https://mkvtoolnix.downlo
 
 > **No Python required** — `mkvpropedit`, `mkvmerge` and all dependencies bundled.
 
-1. **[📦 Download PyMkvPropEdit v3.7 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
+1. **[📦 Download PyMkvPropEdit v3.8 EXE](https://github.com/Crysisjim/PyMkvPropEdit/releases/latest)**
 2. Extract the ZIP
 3. Double-click **`PyMkvPropEdit.exe`**
 4. On **first launch**, choose between **bundled** MKVToolNix (no installation needed) or **system** MKVToolNix (already installed)
@@ -172,6 +172,37 @@ PyMkvPropEdit/
 ## 🆕 Changelog
 
 <details open>
+<summary><b>v3.8 — Batch Pro: écriture instantanée + sync sous-titres avancée</b></summary>
+
+**🇫🇷 Performances & métadonnées**
+- **[NEW]** **Écriture des métadonnées quasi-instantanée** quand aucun remux n'est requis (sync/réordonnancement désactivés) : tags + cover + NFO écrits **en place** par mkvpropedit (cover/kodi d'abord, tags ensuite → un seul SeekHead → lisible par MediaInfo **et** MetaX), au lieu d'un remux complet. ~0,5 s au lieu de plusieurs minutes sur les gros fichiers.
+- **[NEW]** Quand un remux est nécessaire (sync/réordonnancement), tags + cover + kodi sont **intégrés au passage mkvmerge** (1 seule réécriture).
+- **[FIX]** Tags invisibles dans MediaInfo/VLC sur les fichiers à chapitres (2e SeekHead) — résolu.
+- **[FIX]** **Description courte des films** : `tagline` TMDB → description courte, `overview` → synopsis long (au lieu du même texte partout).
+- **[FIX]** "Supprimer anciens tags/cover" fonctionne désormais **seul** (nettoyage sans réécrire de nouvelles métadonnées).
+
+**🇫🇷 Pistes & synchronisation**
+- **[NEW]** **Activer/désactiver des pistes** dans l'onglet Ordre des pistes (colonne ✓) — les pistes décochées sont **exclues** du fichier final.
+- **[NEW]** **Sélection des langues de sous-titres** à synchroniser (dialog multi-cases "Toutes / par langue").
+- **[NEW]** **Décalage sous-titres manuel (ms)** — appliquer un décalage fixe (ex. `-960`) aux subs choisis pour **annuler** une synchro précédente, même sur un batch.
+- **[NEW]** Normalisation des codes langue (`fre`↔`fra`, `ger`↔`deu`…) pour le matching des sous-titres.
+
+**🇬🇧 Performance & metadata**
+- **[NEW]** **Near-instant metadata writing** when no remux is needed: tags + cover + NFO written **in place** by mkvpropedit (attachments first, tags second → single SeekHead → readable by MediaInfo **and** MetaX), instead of a full remux. ~0.5 s vs minutes on large files.
+- **[NEW]** When a remux is required (sync/reorder), tags + cover + kodi are **muxed in the same mkvmerge pass**.
+- **[FIX]** Tags invisible in MediaInfo/VLC on chaptered files (second SeekHead) — fixed.
+- **[FIX]** **Movie short description**: TMDB `tagline` → short, `overview` → long synopsis.
+- **[FIX]** "Delete old tags/cover" now works **standalone** (clean-only, no re-write).
+
+**🇬🇧 Tracks & sync**
+- **[NEW]** **Enable/disable tracks** in the Track Order tab (✓ column) — unchecked tracks are **dropped** from the output.
+- **[NEW]** **Subtitle-language selection** for sync (multi-checkbox dialog "All / per language").
+- **[NEW]** **Manual subtitle offset (ms)** — apply a fixed shift (e.g. `-960`) to chosen subs to **undo** a previous sync, even on a batch.
+- **[NEW]** Language-code normalization (`fre`↔`fra`, `ger`↔`deu`…) for subtitle matching.
+
+</details>
+
+<details>
 <summary><b>v3.7 — Batch Pro: FileBot-like auto-rename + Kodi/MetaX-level metadata</b></summary>
 
 **🇫🇷 Nouvel onglet Batch Pro 🚀**
