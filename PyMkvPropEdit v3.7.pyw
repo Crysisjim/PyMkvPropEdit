@@ -844,6 +844,18 @@ def parse_media_filename(filename):
         result['title'] = _clean_title(title)
         return result
 
+    # Exx alone (no season marker) — e.g. "Title.E01.stuff" → series S01
+    m = re.search(r'(?<![0-9])[Ee](\d{1,3})(?:[Ee](\d{1,3}))?(?![0-9])', name)
+    if m:
+        result['kind'] = 'series'
+        result['season'] = 1
+        result['episode'] = int(m.group(1))
+        if m.group(2):
+            result['episode_end'] = int(m.group(2))
+        title = work[:m.start()].strip(' -._')
+        result['title'] = _clean_title(title)
+        return result
+
     # --- Movie pattern: title (year) ---
     m = re.search(r'\b(19\d{2}|20\d{2})\b', name)
     if m:
@@ -3682,6 +3694,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         ttk.Combobox(srow, textvariable=self.bp_api_var,
                      values=['Auto', 'TVDB', 'TMDB', 'TVmaze'],
                      width=8, state='readonly').pack(side='left', padx=5)
+        tk.Label(srow, text="Mode:").pack(side='left', padx=(8, 0))
+        self.bp_kind_var = tk.StringVar(value=settings.get('bp_kind_override', 'Auto'))
+        ttk.Combobox(srow, textvariable=self.bp_kind_var,
+                     values=['Auto', 'Série', 'Film'],
+                     width=7, state='readonly').pack(side='left', padx=5)
         tk.Button(srow, text=T('bp_search_names'), command=self._search_names,
                   bg='#17a2b8', fg='white', font=("Arial", 9, "bold")).pack(side='left', padx=8)
         self.bp_picker_btn = tk.Button(srow, text="🎨 Illus./Desc.",
@@ -3981,8 +3998,21 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.after(0, lambda: self.rename_tree.delete(*self.rename_tree.get_children()))
         self.file_results.clear()
 
+        # Mode override from UI combobox
+        _kind_override = getattr(self, 'bp_kind_var', None)
+        _kind_override = _kind_override.get() if _kind_override else 'Auto'
+
         for f in files:
             parsed = parse_media_filename(f)
+            # Apply forced mode (Série / Film) — override auto-detect
+            if _kind_override == 'Série':
+                parsed['kind'] = 'series'
+                if parsed.get('season') is None:
+                    parsed['season'] = 1
+                if parsed.get('episode') is None:
+                    parsed['episode'] = 1
+            elif _kind_override == 'Film':
+                parsed['kind'] = 'movie'
             meta = detect_video_metadata(f, mkvmerge, ffprobe)
             chosen = {}
             status = '?'
@@ -5408,6 +5438,7 @@ class PyMkvPropEdit:
             'tmdb_api_key': self.tmdb_key_entry.get() if hasattr(self, 'tmdb_key_entry') else self.settings.get('tmdb_api_key', ''),
             'bp_search_lang': self.batch_pro_app.search_lang_var.get() if hasattr(self, 'batch_pro_app') else 'fr',
             'bp_api_provider': self.batch_pro_app.bp_api_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
+            'bp_kind_override': self.batch_pro_app.bp_kind_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
             'bp_ref_lang': self.batch_pro_app.bp_ref_lang_var.get() if hasattr(self, 'batch_pro_app') else 'jpn',
             'bp_duration': self.batch_pro_app.bp_duration_var.get() if hasattr(self, 'batch_pro_app') else "120",
             'bp_start': self.batch_pro_app.bp_start_var.get() if hasattr(self, 'batch_pro_app') else "300",
