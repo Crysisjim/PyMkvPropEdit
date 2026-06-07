@@ -1075,21 +1075,23 @@ class TVDBProvider:
         return out
 
     def get_episode_name(self, series_id, season, episode):
-        """Return localized episode name for a series/season/episode."""
+        """Return localized episode name for a series/season/episode.
+        Tries default → absolute → dvd → official orderings (anime often use absolute)."""
         if not self._login():
             return None
         sid = str(series_id).replace("series-", "")
-        url = (f"{self.BASE}/series/{sid}/episodes/default/{self.lang}"
-               f"?season={season}&episodeNumber={episode}")
-        data = _http_get_json(url, self._headers())
-        try:
-            eps = data["data"]["episodes"]
-            for ep in eps:
-                if ep.get("seasonNumber") == season and ep.get("number") == episode:
-                    return ep.get("name")
-        except Exception:
-            pass
-        # Fallback: extended translations
+        for ordering in ('default', 'absolute', 'dvd', 'official'):
+            url = (f"{self.BASE}/series/{sid}/episodes/{ordering}/{self.lang}"
+                   f"?season={season}&episodeNumber={episode}")
+            try:
+                data = _http_get_json(url, self._headers())
+                for ep in data.get("data", {}).get("episodes", []):
+                    if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                        name = ep.get("name")
+                        if name:
+                            return name
+            except Exception:
+                continue
         return None
 
     def get_series_name(self, series_id):
@@ -1104,25 +1106,30 @@ class TVDBProvider:
             return None
 
     def get_episode_meta(self, series_id, season, episode):
-        """Return {name, description, still_url, aired, episode_id} for an episode."""
+        """Return {name, description, still_url, aired, episode_id} for an episode.
+
+        Tries 'default' ordering first; falls back to 'absolute' when the series
+        uses absolute episode numbering (many anime, e.g. GTO where default=season 0 only).
+        """
         if not self._login():
             return {}
         sid = str(series_id).replace("series-", "")
-        url = (f"{self.BASE}/series/{sid}/episodes/default/{self.lang}"
-               f"?season={season}&episodeNumber={episode}")
-        data = _http_get_json(url, self._headers())
-        try:
-            for ep in data["data"]["episodes"]:
-                if ep.get("seasonNumber") == season and ep.get("number") == episode:
-                    return {
-                        'name': ep.get("name", ""),
-                        'description': ep.get("overview", ""),
-                        'still_url': ep.get("image", ""),
-                        'aired': ep.get("aired", ""),
-                        'episode_id': ep.get("id"),
-                    }
-        except Exception:
-            pass
+        for ordering in ('default', 'absolute', 'dvd', 'official'):
+            url = (f"{self.BASE}/series/{sid}/episodes/{ordering}/{self.lang}"
+                   f"?season={season}&episodeNumber={episode}")
+            try:
+                data = _http_get_json(url, self._headers())
+                for ep in data.get("data", {}).get("episodes", []):
+                    if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                        return {
+                            'name': ep.get("name", ""),
+                            'description': ep.get("overview", ""),
+                            'still_url': ep.get("image", ""),
+                            'aired': ep.get("aired", ""),
+                            'episode_id': ep.get("id"),
+                        }
+            except Exception:
+                continue
         return {}
 
     def get_series_meta(self, series_id):
