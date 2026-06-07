@@ -3881,9 +3881,16 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         tk.Label(out_row, text="(vide = sous-dossier auto)",
                  fg='gray', font=("Arial", 8, "italic")).pack(side='left', padx=4)
 
-        self.bp_run_btn = tk.Button(sec4, text=T('bp_run'), command=self._run_pipeline,
+        btn_row = tk.Frame(sec4)
+        btn_row.pack(fill='x', pady=4)
+        self._bp_stop_flag = False
+        self.bp_run_btn = tk.Button(btn_row, text=T('bp_run'), command=self._run_pipeline,
                                     bg='#008000', fg='white', font=("Arial", 11, "bold"))
-        self.bp_run_btn.pack(fill='x', pady=4)
+        self.bp_run_btn.pack(side='left', fill='x', expand=True)
+        self.bp_stop_btn = tk.Button(btn_row, text="⏹ Stop", command=self._stop_pipeline,
+                                     bg='#cc0000', fg='white', font=("Arial", 11, "bold"),
+                                     state='disabled', width=8)
+        self.bp_stop_btn.pack(side='left', padx=(4, 0))
 
         self.bp_progress = ttk.Progressbar(sec4, orient='horizontal', mode='determinate')
         self.bp_progress.pack(fill='x', pady=1)
@@ -4693,12 +4700,18 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         dlg.geometry("+%d+%d" % (self.winfo_rootx() + 200, self.winfo_rooty() + 150))
 
     # ---- Pipeline execution ----
+    def _stop_pipeline(self):
+        self._bp_stop_flag = True
+        self.bp_stop_btn.config(state='disabled', text="⏹ Arrêt…")
+
     def _run_pipeline(self):
         files = list(self.file_list.get(0, tk.END))
         if not files:
             messagebox.showwarning("Batch Pro", "Aucun fichier ajouté !")
             return
+        self._bp_stop_flag = False
         self.bp_run_btn.config(state='disabled')
+        self.bp_stop_btn.config(state='normal', text="⏹ Stop")
         self.bp_progress['maximum'] = len(files)
         self.bp_progress['value'] = 0
         self.bp_status_lbl.config(text=f"Démarrage… 0/{len(files)} (0%)", fg='#0066cc')
@@ -4733,6 +4746,9 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         done = 0
 
         for mkv_path in files:
+            if self._bp_stop_flag:
+                self._bp_log("⏹ Pipeline interrompu par l'utilisateur.")
+                break
             base_name = os.path.basename(mkv_path)
             self._bp_log(f"━━ {base_name} ━━")
             try:
@@ -5041,12 +5057,19 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
             ))
 
         total_time = time.time() - start_time
-        self._bp_log(f"━━ Pipeline terminé en {int(total_time // 60)}m {int(total_time % 60)}s ━━")
+        stopped = self._bp_stop_flag
+        if stopped:
+            self._bp_log(f"━━ Arrêté — {done}/{len(files)} fichiers traités ━━")
+        else:
+            self._bp_log(f"━━ Pipeline terminé en {int(total_time // 60)}m {int(total_time % 60)}s ━━")
         self.after(0, lambda: (
             self.bp_run_btn.config(state='normal'),
+            self.bp_stop_btn.config(state='disabled', text="⏹ Stop"),
             self.bp_status_lbl.config(
-                text=f"✓ Terminé — {done}/{len(files)} fichiers en "
-                     f"{int(total_time // 60)}m {int(total_time % 60)}s", fg='#008000'),
+                text=(f"⏹ Arrêté — {done}/{len(files)} fichiers" if stopped else
+                      f"✓ Terminé — {done}/{len(files)} fichiers en "
+                      f"{int(total_time // 60)}m {int(total_time % 60)}s"),
+                fg='#cc6600' if stopped else '#008000'),
         ))
         threading.Thread(target=notify_toast,
                          args=(f"Batch Pro — {T('notif_batch_done')}",
