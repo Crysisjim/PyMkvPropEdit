@@ -1038,10 +1038,26 @@ class TVDBProvider:
     """TheTVDB v4 API client. Requires API key. Series + movies."""
     BASE = "https://api4.thetvdb.com/v4"
 
-    def __init__(self, api_key, lang='fra'):
+    # Ordering fallback sequence for 'Auto' mode
+    _ORDER_AUTO = ('default', 'absolute', 'dvd', 'official')
+    # Map UI label → API ordering name(s) to try
+    _ORDER_MAP = {
+        'auto':             ('default', 'absolute', 'dvd', 'official'),
+        'absolute':         ('absolute',),
+        'default/official': ('default', 'official'),
+        'dvd':              ('dvd',),
+        'spéciaux (s0)':    ('default', 'official'),  # season=0 specials
+    }
+
+    def __init__(self, api_key, lang='fra', preferred_order='Auto'):
         self.api_key = api_key
         self.lang = lang
         self.token = None
+        # Resolve ordering sequence from UI label
+        key = preferred_order.lower().strip()
+        self._orderings = self._ORDER_MAP.get(key, self._ORDER_AUTO)
+        # Special case: 'Spéciaux (S0)' forces season 0 in queries
+        self._force_season0 = (key == 'spéciaux (s0)')
 
     def _login(self):
         if self.token:
@@ -1075,18 +1091,18 @@ class TVDBProvider:
         return out
 
     def get_episode_name(self, series_id, season, episode):
-        """Return localized episode name for a series/season/episode.
-        Tries default → absolute → dvd → official orderings (anime often use absolute)."""
+        """Return localized episode name. Uses preferred ordering with auto-fallback."""
         if not self._login():
             return None
         sid = str(series_id).replace("series-", "")
-        for ordering in ('default', 'absolute', 'dvd', 'official'):
+        target_season = 0 if self._force_season0 else season
+        for ordering in self._orderings:
             url = (f"{self.BASE}/series/{sid}/episodes/{ordering}/{self.lang}"
-                   f"?season={season}&episodeNumber={episode}")
+                   f"?season={target_season}&episodeNumber={episode}")
             try:
                 data = _http_get_json(url, self._headers())
                 for ep in data.get("data", {}).get("episodes", []):
-                    if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                    if ep.get("seasonNumber") == target_season and ep.get("number") == episode:
                         name = ep.get("name")
                         if name:
                             return name
@@ -1107,20 +1123,18 @@ class TVDBProvider:
 
     def get_episode_meta(self, series_id, season, episode):
         """Return {name, description, still_url, aired, episode_id} for an episode.
-
-        Tries 'default' ordering first; falls back to 'absolute' when the series
-        uses absolute episode numbering (many anime, e.g. GTO where default=season 0 only).
-        """
+        Uses preferred_order (set at init) with auto-fallback for anime/absolute series."""
         if not self._login():
             return {}
         sid = str(series_id).replace("series-", "")
-        for ordering in ('default', 'absolute', 'dvd', 'official'):
+        target_season = 0 if self._force_season0 else season
+        for ordering in self._orderings:
             url = (f"{self.BASE}/series/{sid}/episodes/{ordering}/{self.lang}"
-                   f"?season={season}&episodeNumber={episode}")
+                   f"?season={target_season}&episodeNumber={episode}")
             try:
                 data = _http_get_json(url, self._headers())
                 for ep in data.get("data", {}).get("episodes", []):
-                    if ep.get("seasonNumber") == season and ep.get("number") == episode:
+                    if ep.get("seasonNumber") == target_season and ep.get("number") == episode:
                         return {
                             'name': ep.get("name", ""),
                             'description': ep.get("overview", ""),
@@ -1460,10 +1474,10 @@ class TVmazeProvider:
 class MetadataResolver:
     """Tries providers in order: TVDB → TMDB → TVmaze."""
 
-    def __init__(self, tvdb_key='', tmdb_key='', lang_tvdb='fra', lang_tmdb='fr-FR', include_tvmaze=True):
+    def __init__(self, tvdb_key='', tmdb_key='', lang_tvdb='fra', lang_tmdb='fr-FR', include_tvmaze=True, tvdb_order='Auto'):
         self.providers = []
         if tvdb_key:
-            self.providers.append(('TVDB', TVDBProvider(tvdb_key, lang_tvdb)))
+            self.providers.append(('TVDB', TVDBProvider(tvdb_key, lang_tvdb, preferred_order=tvdb_order)))
         if tmdb_key:
             self.providers.append(('TMDB', TMDBProvider(tmdb_key, lang_tmdb)))
         if include_tvmaze:
@@ -3323,7 +3337,10 @@ class MetadataPickerDialog(tk.Toplevel):
             meta = {}
             try:
                 if pname == 'TVDB' and tvdb_key:
-                    prov = TVDBProvider(tvdb_key, self.lang_tvdb)
+                    _tvdb_order = (self.batch_pro_tab.bp_tvdb_order_var.get()
+                                   if self.batch_pro_tab and hasattr(self.batch_pro_tab, 'bp_tvdb_order_var')
+                                   else 'Auto')
+                    prov = TVDBProvider(tvdb_key, self.lang_tvdb, preferred_order=_tvdb_order)
                     if parsed.get('kind') == 'series':
                         meta = prov.get_episode_meta(sid, parsed['season'], parsed['episode'])
                         meta['poster_url'] = prov.get_series_poster(sid)
@@ -3706,6 +3723,11 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         ttk.Combobox(srow, textvariable=self.bp_kind_var,
                      values=['Auto', 'Série', 'Film'],
                      width=7, state='readonly').pack(side='left', padx=5)
+        tk.Label(srow, text="Ordre TVDB:").pack(side='left', padx=(8, 0))
+        self.bp_tvdb_order_var = tk.StringVar(value=settings.get('bp_tvdb_order', 'Auto'))
+        ttk.Combobox(srow, textvariable=self.bp_tvdb_order_var,
+                     values=['Auto', 'Absolute', 'Default/Official', 'DVD', 'Spéciaux (S0)'],
+                     width=14, state='readonly').pack(side='left', padx=5)
         tk.Button(srow, text=T('bp_search_names'), command=self._search_names,
                   bg='#17a2b8', fg='white', font=("Arial", 9, "bold")).pack(side='left', padx=8)
         self.bp_picker_btn = tk.Button(srow, text="🎨 Illus./Desc.",
@@ -3959,18 +3981,20 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         tmdb = self.settings.get('tmdb_api_key', '')
         lang = self.search_lang_var.get()
         provider_choice = self.bp_api_var.get()
+        tvdb_order = getattr(self, 'bp_tvdb_order_var', None)
+        tvdb_order = tvdb_order.get() if tvdb_order else 'Auto'
         lang_tvdb = {'fr': 'fra', 'en': 'eng', 'ja': 'jpn', 'de': 'deu',
                      'es': 'spa', 'it': 'ita'}.get(lang, 'eng')
         lang_tmdb = {'fr': 'fr-FR', 'en': 'en-US', 'ja': 'ja-JP', 'de': 'de-DE',
                      'es': 'es-ES', 'it': 'it-IT'}.get(lang, 'en-US')
         if provider_choice == 'TVDB':
-            return MetadataResolver(tvdb, '', lang_tvdb, lang_tmdb, include_tvmaze=False)
+            return MetadataResolver(tvdb, '', lang_tvdb, lang_tmdb, include_tvmaze=False, tvdb_order=tvdb_order)
         elif provider_choice == 'TMDB':
-            return MetadataResolver('', tmdb, lang_tvdb, lang_tmdb, include_tvmaze=False)
+            return MetadataResolver('', tmdb, lang_tvdb, lang_tmdb, include_tvmaze=False, tvdb_order=tvdb_order)
         elif provider_choice == 'TVmaze':
-            return MetadataResolver('', '', lang_tvdb, lang_tmdb, include_tvmaze=True)
+            return MetadataResolver('', '', lang_tvdb, lang_tmdb, include_tvmaze=True, tvdb_order=tvdb_order)
         else:  # Auto
-            return MetadataResolver(tvdb, tmdb, lang_tvdb, lang_tmdb, include_tvmaze=True)
+            return MetadataResolver(tvdb, tmdb, lang_tvdb, lang_tmdb, include_tvmaze=True, tvdb_order=tvdb_order)
 
     def _search_names(self):
         files = list(self.file_list.get(0, tk.END))
@@ -5446,6 +5470,7 @@ class PyMkvPropEdit:
             'bp_search_lang': self.batch_pro_app.search_lang_var.get() if hasattr(self, 'batch_pro_app') else 'fr',
             'bp_api_provider': self.batch_pro_app.bp_api_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
             'bp_kind_override': self.batch_pro_app.bp_kind_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
+            'bp_tvdb_order': self.batch_pro_app.bp_tvdb_order_var.get() if hasattr(self, 'batch_pro_app') else 'Auto',
             'bp_ref_lang': self.batch_pro_app.bp_ref_lang_var.get() if hasattr(self, 'batch_pro_app') else 'jpn',
             'bp_duration': self.batch_pro_app.bp_duration_var.get() if hasattr(self, 'batch_pro_app') else "120",
             'bp_start': self.batch_pro_app.bp_start_var.get() if hasattr(self, 'batch_pro_app') else "300",

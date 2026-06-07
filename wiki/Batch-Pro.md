@@ -16,10 +16,15 @@ Add your `.mkv` files (buttons, folder, or drag & drop).
 
 ### ② Renommage Auto / Auto-Rename
 - Choisissez la **langue** et l'**API** (`Auto` / `TVDB` / `TMDB` / `TVmaze`).
+- **Mode** (`Auto` / `Série` / `Film`) — force le type de contenu si la détection automatique se trompe (ex. `Show.E01.720p` sans `S01`).
+- **Ordre TVDB** (`Auto` / `Absolute` / `Default/Official` / `DVD` / `Spéciaux`) — choisir l'ordering TVDB pour les séries ; `Auto` essaie tous les ordres automatiquement (recommandé pour les anime à numérotation absolue).
 - Cliquez **🔍 Rechercher les noms** → le tableau propose un nouveau nom (double-clic pour éditer).
 - La colonne **Statut** indique la source utilisée (ex. `✓ TVDB`).
 - **Format série / Series:** `Titre - S01E07 - Nom épisode.mkv`
 - **Format film / Movie:** `Titre (2025) 1080p x265 Dolby Vision.mkv` (résolution/codec/HDR auto)
+
+> 💡 **Anime** : si les épisodes sont numérotés en absolu sur TVDB (ex. One Piece, Bleach), sélectionnez `Absolute` pour récupérer le bon titre d'épisode directement.
+> 💡 **Specials** : utilisez `Spéciaux` pour récupérer les épisodes de la saison 0 (OAV, specials).
 
 **🎨 Bouton Illus./Desc.** — ouvre le **picker** : pour chaque champ (illustration, description courte, synopsis long, cast, **réalisateur/producteur/studio**, genres) vous choisissez la source (TVDB / TMDB / TVmaze) indépendamment. Cochez *Appliquer à tous* pour utiliser les mêmes **sources** sur tous les fichiers (le contenu reste propre à chaque épisode).
 
@@ -41,19 +46,27 @@ Tick the desired steps:
 | Option | Effet / Effect |
 |--------|----------------|
 | Synchroniser audio | Sync FFT (numpy/scipy) — délais auto / auto FFT delays |
-| + sous-titres | Applique le décalage aux subs / apply offset to subtitles |
+| + sous-titres + bouton **langues ▾** | Applique le décalage aux subs des **langues choisies** (Toutes / par langue) / apply offset to subs of the **selected languages** |
+| **Décalage subs (ms)** | Décalage manuel fixe (ex. `-960`) pour **annuler** une sync précédente / manual fixed offset to **undo** a previous sync |
 | Appliquer paramètres mkvpropedit | Noms/flags de pistes / track names & flags |
-| Réordonner les pistes | Selon le modèle / per template |
+| Réordonner les pistes (colonne ✓) | Selon le modèle ; **décochez une piste** pour l'**exclure** du fichier final / per template; **uncheck a track** to **drop** it from the output |
 | Renommer fichier | Nom auto / auto name |
 | Intégrer métadonnées | Tags MKV + cover + NFO Kodi / MKV tags + cover + Kodi NFO |
-| Supprimer anciens tags/cover | Nettoie avant d'écrire / clean before writing |
+| Supprimer anciens tags/cover | Nettoie (fonctionne **seul**) / clean (works **standalone**) |
+| Conserver source (mode copie) | Garde l'original, travaille sur une copie / keep original, work on a copy |
 | Dossier de sortie | Place les fichiers finaux ailleurs / move finals elsewhere |
 
-➡️ **Sync + réordonnancement = un seul passage mkvmerge** (remux sans ré-encodage), puis mkvpropedit, métadonnées, renommage.
-➡️ **Sync + reorder = a single mkvmerge pass** (remux, no re-encode), then mkvpropedit, metadata, rename.
+➡️ **Sans remux (pas de sync/réordonnancement)** : métadonnées écrites **en place, quasi-instantanément** (cover/kodi puis tags → un seul SeekHead, lisible MediaInfo **et** MetaX).
+➡️ **No remux (no sync/reorder)**: metadata written **in place, near-instantly** (cover/kodi then tags → single SeekHead, readable by MediaInfo **and** MetaX).
+
+➡️ **Sync ou réordonnancement = un seul passage mkvmerge** (remux sans ré-encodage) intégrant les métadonnées.
+➡️ **Sync or reorder = a single mkvmerge pass** (no re-encode) that also embeds the metadata.
 
 Une **barre de progression dédiée** affiche `%`, ETA, temps écoulé et compteur `N/total`.
 A **dedicated progress bar** shows `%`, ETA, elapsed time and `N/total` counter.
+
+> 💡 **Codes langue** : `fre`/`fra`, `ger`/`deu`… sont traités comme équivalents pour le matching des sous-titres.
+> 💡 **Language codes**: `fre`/`fra`, `ger`/`deu`… are treated as equivalent for subtitle matching.
 
 ---
 

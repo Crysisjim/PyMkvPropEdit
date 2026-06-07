@@ -187,6 +187,13 @@ PyMkvPropEdit/
 - **[NEW]** **Décalage sous-titres manuel (ms)** — appliquer un décalage fixe (ex. `-960`) aux subs choisis pour **annuler** une synchro précédente, même sur un batch.
 - **[NEW]** Normalisation des codes langue (`fre`↔`fra`, `ger`↔`deu`…) pour le matching des sous-titres.
 
+**🇫🇷 Renommage & métadonnées améliorés**
+- **[NEW]** **Combobox Mode** (`Auto / Série / Film`) — forcer le type de contenu quand le parser auto échoue.
+- **[NEW]** **Combobox Ordre TVDB** (`Auto / Absolute / Default\/Official / DVD / Spéciaux`) — choisir l'ordering TVDB pour les séries anime/spéciaux ; `Auto` essaie tous les ordres (fallback automatique).
+- **[FIX]** Détection parser : pattern `E01` sans `S01` (ex. `Show.E01.720p`) → correctement classé comme série S1E1.
+- **[FIX]** Description courte films : picker affiche le tagline TMDB séparément du synopsis long.
+- **[FIX]** TVDB ordering fallback `default → absolute → dvd → official` pour les séries anime à numérotation absolue.
+
 **🇬🇧 Performance & metadata**
 - **[NEW]** **Near-instant metadata writing** when no remux is needed: tags + cover + NFO written **in place** by mkvpropedit (attachments first, tags second → single SeekHead → readable by MediaInfo **and** MetaX), instead of a full remux. ~0.5 s vs minutes on large files.
 - **[NEW]** When a remux is required (sync/reorder), tags + cover + kodi are **muxed in the same mkvmerge pass**.
@@ -199,6 +206,13 @@ PyMkvPropEdit/
 - **[NEW]** **Subtitle-language selection** for sync (multi-checkbox dialog "All / per language").
 - **[NEW]** **Manual subtitle offset (ms)** — apply a fixed shift (e.g. `-960`) to chosen subs to **undo** a previous sync, even on a batch.
 - **[NEW]** Language-code normalization (`fre`↔`fra`, `ger`↔`deu`…) for subtitle matching.
+
+**🇬🇧 Rename & metadata improvements**
+- **[NEW]** **Mode combobox** (`Auto / Series / Movie`) — force content type when auto-detection fails.
+- **[NEW]** **TVDB Order combobox** (`Auto / Absolute / Default\/Official / DVD / Specials`) — pick TVDB episode ordering for anime/specials; `Auto` tries all orderings automatically.
+- **[FIX]** Parser: bare `E01` pattern (no `S01`) now correctly detected as series S1E1.
+- **[FIX]** Movie short description: picker shows TMDB tagline separately from long synopsis.
+- **[FIX]** TVDB ordering fallback `default → absolute → dvd → official` for anime using absolute numbering.
 
 </details>
 
