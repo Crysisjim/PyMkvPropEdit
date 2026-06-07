@@ -157,6 +157,212 @@ def norm_lang(code):
     return _LANG_ALIAS.get(c, c)
 
 
+# ── Tooltip (infobule) helper ────────────────────────────────────────────────
+class ToolTip:
+    """Lightweight tooltip that appears after a short hover delay."""
+    _DELAY = 600   # ms before showing
+    _WRAP  = 340   # max pixel width
+
+    def __init__(self, widget, text: str):
+        self._widget = widget
+        self._text   = text
+        self._tip_win = None
+        self._job    = None
+        widget.bind('<Enter>',   self._schedule, add='+')
+        widget.bind('<Leave>',   self._cancel,   add='+')
+        widget.bind('<Button>',  self._cancel,   add='+')
+        widget.bind('<Destroy>', self._cancel,   add='+')
+
+    def _schedule(self, _event=None):
+        self._cancel()
+        self._job = self._widget.after(self._DELAY, self._show)
+
+    def _cancel(self, _event=None):
+        if self._job:
+            self._widget.after_cancel(self._job)
+            self._job = None
+        if self._tip_win:
+            try:
+                self._tip_win.destroy()
+            except Exception:
+                pass
+            self._tip_win = None
+
+    def _show(self):
+        if self._tip_win:
+            return
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._tip_win = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f'+{x}+{y}')
+        tw.attributes('-topmost', True)
+        lbl = tk.Label(tw, text=self._text, justify='left',
+                       background='#fffde7', foreground='#333333',
+                       relief='solid', borderwidth=1,
+                       font=('Arial', 9), wraplength=self._WRAP,
+                       padx=6, pady=4)
+        lbl.pack()
+
+
+# Bilingual tooltip texts for Batch Pro elements.
+# Key → {'fr': '...', 'en': '...'}
+_BP_TIPS: dict = {
+    # ① Fichiers
+    'file_list': {
+        'fr': "Liste des fichiers MKV à traiter.\nGlissez-déposez des fichiers ou utilisez les boutons ci-dessous.\nSélection multiple : Ctrl+clic / Shift+clic.",
+        'en': "List of MKV files to process.\nDrag & drop files or use the buttons below.\nMultiple selection: Ctrl+click / Shift+click.",
+    },
+    'btn_add_files': {
+        'fr': "Ajouter des fichiers MKV individuels via l'explorateur.",
+        'en': "Add individual MKV files via the file browser.",
+    },
+    'btn_add_folder': {
+        'fr': "Ajouter tous les MKV d'un dossier et de ses sous-dossiers.",
+        'en': "Add all MKV files from a folder and its subfolders.",
+    },
+    'btn_remove': {
+        'fr': "Supprimer les fichiers sélectionnés de la liste (sans les effacer du disque).",
+        'en': "Remove selected files from the list (does not delete them from disk).",
+    },
+    'btn_clear': {
+        'fr': "Vider toute la liste de fichiers et effacer les résultats.",
+        'en': "Clear the entire file list and reset all results.",
+    },
+    # ② Renommage
+    'search_lang': {
+        'fr': "Langue de recherche des métadonnées (titres, descriptions).\n'fr' = français, 'en' = anglais, 'ja' = japonais…\nN'affecte pas la langue des sous-titres dans le fichier.",
+        'en': "Language for metadata search (titles, descriptions).\n'fr' = French, 'en' = English, 'ja' = Japanese…\nDoes not affect subtitle language in the file.",
+    },
+    'bp_api': {
+        'fr': "API source pour les métadonnées :\n• Auto — essaie TVDB, TMDB puis TVmaze\n• TVDB — séries uniquement (clé requise)\n• TMDB — séries et films (clé requise)\n• TVmaze — séries, sans clé",
+        'en': "Metadata source API:\n• Auto — tries TVDB, TMDB then TVmaze\n• TVDB — series only (key required)\n• TMDB — series & movies (key required)\n• TVmaze — series, no key needed",
+    },
+    'bp_kind': {
+        'fr': "Force le type de contenu détecté :\n• Auto — déduit du nom de fichier (recommandé)\n• Série — force la recherche épisode (utile si le nom ne contient pas S01E01)\n• Film — force la recherche film",
+        'en': "Force the detected content type:\n• Auto — inferred from filename (recommended)\n• Série — force episode search (useful if filename has no S01E01)\n• Film — force movie search",
+    },
+    'bp_tvdb_order': {
+        'fr': "Ordering TVDB pour trouver le bon épisode :\n• Auto — essaie tous les ordres (default→absolute→dvd→official)\n• Absolute — numérotation absolue (anime : One Piece, Bleach…)\n• Default/Official — ordre diffusion standard\n• DVD — ordre DVD\n• Spéciaux — récupère la saison 0 (OAV, specials)",
+        'en': "TVDB episode ordering to find the right episode:\n• Auto — tries all orderings (default→absolute→dvd→official)\n• Absolute — absolute numbering (anime: One Piece, Bleach…)\n• Default/Official — standard air order\n• DVD — DVD order\n• Spéciaux — retrieves season 0 (OAVs, specials)",
+    },
+    'bp_search_names': {
+        'fr': "Lance la recherche de métadonnées pour tous les fichiers de la liste.\nLe nom proposé apparaît dans la colonne 'Nouveau nom'.\nDouble-cliquez sur une ligne pour modifier le nom manuellement.",
+        'en': "Start metadata search for all files in the list.\nThe suggested name appears in the 'New name' column.\nDouble-click a row to edit the name manually.",
+    },
+    'bp_picker_btn': {
+        'fr': "Ouvre le sélecteur d'illustration et de descriptions.\nPour chaque champ (illustration, description courte, synopsis, cast, réalisateur, genres) choisissez la source indépendamment.\n⚠ Nécessite d'avoir lancé 🔍 d'abord.",
+        'en': "Opens the artwork & description picker.\nFor each field (cover, short description, synopsis, cast, director, genres) choose the source independently.\n⚠ Requires running 🔍 first.",
+    },
+    'rename_tree': {
+        'fr': "Tableau des résultats de renommage.\n• Colonne 'Détecté' : type et épisode reconnus depuis le nom de fichier\n• Colonne 'Nouveau nom' : nom proposé (double-clic pour éditer)\n• Colonne 'Statut' : API utilisée (TVDB / TMDB / TVmaze / Manuel)",
+        'en': "Rename results table.\n• 'Detected' column: type and episode parsed from filename\n• 'New name' column: suggested name (double-click to edit)\n• 'Status' column: API used (TVDB / TMDB / TVmaze / Manual)",
+    },
+    'bp_embed_meta': {
+        'fr': "Intègre les métadonnées dans le MKV :\ntags (titre, résumé, cast, genre…), cover art (poster) et NFO Kodi.\nLes sources sont choisies via le bouton 🎨.",
+        'en': "Embeds metadata into the MKV:\ntags (title, summary, cast, genre…), cover art (poster) and Kodi NFO.\nSources are chosen via the 🎨 button.",
+    },
+    'bp_clean_tags': {
+        'fr': "Supprime les tags MKV et l'artwork existants avant d'intégrer les nouveaux.\nRecommandé pour éviter les doublons si le fichier a déjà des métadonnées.",
+        'en': "Removes existing MKV tags and artwork before embedding new ones.\nRecommended to avoid duplicates if the file already has metadata.",
+    },
+    # ③ Ordre des pistes
+    'bp_load_ref': {
+        'fr': "Charger un fichier MKV de référence pour définir l'ordre des pistes.\nToutes les pistes du fichier choisi s'affichent dans le tableau.",
+        'en': "Load a reference MKV file to define track order.\nAll tracks from the chosen file appear in the table.",
+    },
+    'bp_load_first': {
+        'fr': "Utiliser le premier fichier de la liste comme référence de pistes.\nPratique quand tous les fichiers ont la même structure.",
+        'en': "Use the first file in the list as the track reference.\nConvenient when all files share the same structure.",
+    },
+    'bp_track_up': {
+        'fr': "Monter la piste sélectionnée dans l'ordre.\nL'ordre définit la priorité dans le fichier MKV final.",
+        'en': "Move the selected track up in the order.\nThe order sets track priority in the final MKV.",
+    },
+    'bp_track_down': {
+        'fr': "Descendre la piste sélectionnée dans l'ordre.",
+        'en': "Move the selected track down in the order.",
+    },
+    'track_tree': {
+        'fr': "Tableau des pistes du fichier de référence.\n• Colonne ✓ : coché = piste conservée, décoché = piste exclue du fichier final\n• L'ordre ici est appliqué à tous les fichiers par correspondance type+langue+forced",
+        'en': "Reference file track table.\n• ✓ column: checked = track kept, unchecked = track excluded from output\n• This order is applied to all files by type+language+forced matching",
+    },
+    # ④ Pipeline
+    'bp_chk_sync': {
+        'fr': "Synchronise automatiquement les pistes audio décalées.\nUtilise une analyse FFT (numpy/scipy) pour calculer le délai de chaque piste par rapport à la piste de référence.",
+        'en': "Automatically synchronizes out-of-sync audio tracks.\nUses FFT analysis (numpy/scipy) to compute each track's delay relative to the reference track.",
+    },
+    'bp_chk_sync_subs': {
+        'fr': "Applique également le délai calculé (audio sync) aux pistes de sous-titres sélectionnées.\nUtile si les sous-titres sont décalés de la même durée que l'audio.",
+        'en': "Also applies the computed audio sync delay to the selected subtitle tracks.\nUseful if subtitles are shifted by the same amount as the audio.",
+    },
+    'bp_subs_lang_btn': {
+        'fr': "Choisir les langues de sous-titres qui reçoivent le décalage.\n'Toutes' = toutes les pistes subs.\nCliquez pour cocher/décocher chaque langue.",
+        'en': "Choose which subtitle languages receive the sync offset.\n'Toutes' = all subtitle tracks.\nClick to check/uncheck each language.",
+    },
+    'bp_chk_props': {
+        'fr': "Applique les paramètres de pistes via mkvpropedit :\nnoms des pistes, flags default/forced/enabled, langue.",
+        'en': "Applies track parameters via mkvpropedit:\ntrack names, default/forced/enabled flags, language.",
+    },
+    'bp_chk_reorder': {
+        'fr': "Réordonne les pistes selon le modèle défini dans la section ③.\nForce un remux mkvmerge (sans ré-encodage).",
+        'en': "Reorders tracks according to the template defined in section ③.\nForces an mkvmerge remux (no re-encode).",
+    },
+    'bp_chk_rename': {
+        'fr': "Renomme le fichier avec le nom proposé dans la colonne 'Nouveau nom'.\nSi aucun nom n'a été recherché, le fichier n'est pas renommé.",
+        'en': "Renames the file with the name shown in the 'New name' column.\nIf no name was searched, the file is not renamed.",
+    },
+    'bp_chk_preserve': {
+        'fr': "Travaille sur une copie du fichier original.\nL'original est conservé intact ; la copie reçoit toutes les modifications.",
+        'en': "Works on a copy of the original file.\nThe original is kept untouched; all changes are applied to the copy.",
+    },
+    'bp_ref_lang': {
+        'fr': "Piste de référence pour la synchronisation audio.\nC'est la langue audio déjà bien synchronisée (ex. japonais pour un anime).\nToutes les autres pistes audio seront alignées sur elle.",
+        'en': "Reference track for audio synchronization.\nThis is the already-synced audio language (e.g. Japanese for anime).\nAll other audio tracks will be aligned to it.",
+    },
+    'bp_duration': {
+        'fr': "Durée (en secondes) utilisée pour l'analyse FFT de synchronisation.\nValeur plus grande = analyse plus précise mais plus lente.\nRecommandé : 120 s.",
+        'en': "Duration (in seconds) used for FFT sync analysis.\nLarger value = more accurate but slower.\nRecommended: 120 s.",
+    },
+    'bp_start': {
+        'fr': "Offset de départ (en secondes) depuis le début du fichier pour l'analyse FFT.\nÉvite les génériques/silences de début.\nRecommandé : 300 s (5 min).",
+        'en': "Start offset (in seconds) from the beginning of the file for FFT analysis.\nSkips intros/silence at the start.\nRecommended: 300 s (5 min).",
+    },
+    'bp_subs_offset': {
+        'fr': "Décalage manuel fixe (ms) appliqué aux sous-titres sélectionnés.\nExemple : si vous aviez appliqué 960 ms de sync sur les subs et que vous voulez annuler, entrez -960.\n0 = aucun décalage. Force un remux.",
+        'en': "Fixed manual offset (ms) applied to the selected subtitle tracks.\nExample: if you previously applied 960 ms sync to subs and want to undo it, enter -960.\n0 = no offset. Forces a remux.",
+    },
+    'bp_output_dir_chk': {
+        'fr': "Activer pour placer les fichiers traités dans un dossier de sortie différent.\nSi désactivé, les fichiers sont modifiés sur place (ou dans un sous-dossier auto).",
+        'en': "Enable to place processed files in a different output folder.\nIf disabled, files are modified in place (or in an auto subfolder).",
+    },
+    'bp_output_path': {
+        'fr': "Chemin du dossier de sortie.\nLaissez vide pour créer automatiquement un sous-dossier 'PyMkvPropEdit_output' dans le dossier source.",
+        'en': "Output folder path.\nLeave empty to auto-create a 'PyMkvPropEdit_output' subfolder in the source folder.",
+    },
+    'bp_browse_out': {
+        'fr': "Choisir le dossier de sortie via l'explorateur.",
+        'en': "Browse for the output folder.",
+    },
+    'bp_run_btn': {
+        'fr': "Lance le pipeline sur tous les fichiers selon les étapes cochées.\nLes étapes s'enchaînent dans l'ordre : sync audio → mkvpropedit → réordonnancement → métadonnées → renommage.",
+        'en': "Start the pipeline on all files according to the checked steps.\nSteps run in order: audio sync → mkvpropedit → reorder → metadata → rename.",
+    },
+    'bp_stop_btn': {
+        'fr': "Arrête le pipeline après le fichier en cours.\nLe fichier en cours de traitement est finalisé avant l'arrêt.",
+        'en': "Stop the pipeline after the current file.\nThe file currently being processed is finished before stopping.",
+    },
+}
+
+
+def bp_tip(widget, key: str) -> ToolTip:
+    """Attach a bilingual Batch Pro tooltip to *widget* using the current UI language."""
+    texts = _BP_TIPS.get(key, {})
+    text = texts.get(LANG, texts.get('fr', texts.get('en', '')))
+    if text:
+        return ToolTip(widget, text)
+
+
 LANGUAGES = [
     'eng (English)', 'fra (French)', 'jpn (Japanese)', 'spa (Spanish)', 'deu (German)',
     'ita (Italian)', 'por (Portuguese)', 'rus (Russian)', 'chi (Chinese)', 'ara (Arabic)',
@@ -3683,6 +3889,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         lb_frame.pack(fill='both', expand=True)
         self.file_list = tk.Listbox(lb_frame, selectmode=tk.MULTIPLE, height=4)
         self.file_list.pack(side='left', fill='both', expand=True)
+        bp_tip(self.file_list, 'file_list')
         sb1 = ttk.Scrollbar(lb_frame, orient='vertical', command=self.file_list.yview)
         sb1.pack(side='right', fill='y')
         self.file_list.configure(yscrollcommand=sb1.set)
@@ -3695,10 +3902,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
         bf = tk.Frame(sec1)
         bf.pack(fill='x', pady=2)
-        tk.Button(bf, text=T('btn_add_files'), command=self._add_files, bg='#ADD8E6').pack(side='left', padx=3)
-        tk.Button(bf, text=T('btn_add_folder'), command=self._add_folder, bg='#800080', fg='white').pack(side='left', padx=3)
-        tk.Button(bf, text=T('btn_remove'), command=self._remove_selected, bg='#FF4500', fg='white').pack(side='left', padx=3)
-        tk.Button(bf, text=T('btn_clear'), command=self._clear_files, bg='#FF0000', fg='white').pack(side='left', padx=3)
+        _b_add = tk.Button(bf, text=T('btn_add_files'), command=self._add_files, bg='#ADD8E6')
+        _b_add.pack(side='left', padx=3); bp_tip(_b_add, 'btn_add_files')
+        _b_folder = tk.Button(bf, text=T('btn_add_folder'), command=self._add_folder, bg='#800080', fg='white')
+        _b_folder.pack(side='left', padx=3); bp_tip(_b_folder, 'btn_add_folder')
+        _b_rem = tk.Button(bf, text=T('btn_remove'), command=self._remove_selected, bg='#FF4500', fg='white')
+        _b_rem.pack(side='left', padx=3); bp_tip(_b_rem, 'btn_remove')
+        _b_clear = tk.Button(bf, text=T('btn_clear'), command=self._clear_files, bg='#FF0000', fg='white')
+        _b_clear.pack(side='left', padx=3); bp_tip(_b_clear, 'btn_clear')
 
         paned.add(sec1, minsize=80, height=115)
 
@@ -3710,31 +3921,37 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         srow.pack(fill='x', pady=1)
         tk.Label(srow, text=T('bp_lang_search')).pack(side='left')
         self.search_lang_var = tk.StringVar(value=settings.get('bp_search_lang', 'fr'))
-        ttk.Combobox(srow, textvariable=self.search_lang_var,
+        _cb_lang = ttk.Combobox(srow, textvariable=self.search_lang_var,
                      values=['fr', 'en', 'ja', 'de', 'es', 'it'],
-                     width=5, state='readonly').pack(side='left', padx=5)
+                     width=5, state='readonly')
+        _cb_lang.pack(side='left', padx=5); bp_tip(_cb_lang, 'search_lang')
         tk.Label(srow, text="API:").pack(side='left', padx=(8, 0))
         self.bp_api_var = tk.StringVar(value=settings.get('bp_api_provider', 'Auto'))
-        ttk.Combobox(srow, textvariable=self.bp_api_var,
+        _cb_api = ttk.Combobox(srow, textvariable=self.bp_api_var,
                      values=['Auto', 'TVDB', 'TMDB', 'TVmaze'],
-                     width=8, state='readonly').pack(side='left', padx=5)
+                     width=8, state='readonly')
+        _cb_api.pack(side='left', padx=5); bp_tip(_cb_api, 'bp_api')
         tk.Label(srow, text="Mode:").pack(side='left', padx=(8, 0))
         self.bp_kind_var = tk.StringVar(value=settings.get('bp_kind_override', 'Auto'))
-        ttk.Combobox(srow, textvariable=self.bp_kind_var,
+        _cb_kind = ttk.Combobox(srow, textvariable=self.bp_kind_var,
                      values=['Auto', 'Série', 'Film'],
-                     width=7, state='readonly').pack(side='left', padx=5)
+                     width=7, state='readonly')
+        _cb_kind.pack(side='left', padx=5); bp_tip(_cb_kind, 'bp_kind')
         tk.Label(srow, text="Ordre TVDB:").pack(side='left', padx=(8, 0))
         self.bp_tvdb_order_var = tk.StringVar(value=settings.get('bp_tvdb_order', 'Auto'))
-        ttk.Combobox(srow, textvariable=self.bp_tvdb_order_var,
+        _cb_tvdb_order = ttk.Combobox(srow, textvariable=self.bp_tvdb_order_var,
                      values=['Auto', 'Absolute', 'Default/Official', 'DVD', 'Spéciaux (S0)'],
-                     width=14, state='readonly').pack(side='left', padx=5)
-        tk.Button(srow, text=T('bp_search_names'), command=self._search_names,
-                  bg='#17a2b8', fg='white', font=("Arial", 9, "bold")).pack(side='left', padx=8)
+                     width=14, state='readonly')
+        _cb_tvdb_order.pack(side='left', padx=5); bp_tip(_cb_tvdb_order, 'bp_tvdb_order')
+        _btn_search = tk.Button(srow, text=T('bp_search_names'), command=self._search_names,
+                  bg='#17a2b8', fg='white', font=("Arial", 9, "bold"))
+        _btn_search.pack(side='left', padx=8); bp_tip(_btn_search, 'bp_search_names')
         self.bp_picker_btn = tk.Button(srow, text="🎨 Illus./Desc.",
                                        command=self._open_meta_picker,
                                        bg='#9b59b6', fg='white',
                                        font=("Arial", 9, "bold"))
         self.bp_picker_btn.pack(side='left', padx=4)
+        bp_tip(self.bp_picker_btn, 'bp_picker_btn')
         self.bp_search_status = tk.Label(srow, text="", fg='gray', font=("Arial", 8, "italic"))
         self.bp_search_status.pack(side='left', padx=5)
 
@@ -3751,6 +3968,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.rename_tree.column('newname', width=300)
         self.rename_tree.column('status', width=100, anchor='center')
         self.rename_tree.pack(side='left', fill='both', expand=True)
+        bp_tip(self.rename_tree, 'rename_tree')
         sb2 = ttk.Scrollbar(rt_frame, orient='vertical', command=self.rename_tree.yview)
         sb2.pack(side='right', fill='y')
         self.rename_tree.configure(yscrollcommand=sb2.set)
@@ -3759,11 +3977,13 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         meta_row = tk.Frame(sec2)
         meta_row.pack(fill='x', pady=1)
         self.bp_embed_meta_var = tk.BooleanVar(value=settings.get('bp_embed_meta', False))
-        ttk.Checkbutton(meta_row, text=T('bp_chk_embed_meta'),
-                        variable=self.bp_embed_meta_var).pack(side='left', padx=5)
+        _chk_embed = ttk.Checkbutton(meta_row, text=T('bp_chk_embed_meta'),
+                        variable=self.bp_embed_meta_var)
+        _chk_embed.pack(side='left', padx=5); bp_tip(_chk_embed, 'bp_embed_meta')
         self.bp_clean_tags_var = tk.BooleanVar(value=settings.get('bp_clean_tags', True))
-        ttk.Checkbutton(meta_row, text="Supprimer anciens tags/cover avant",
-                        variable=self.bp_clean_tags_var).pack(side='left', padx=8)
+        _chk_clean = ttk.Checkbutton(meta_row, text="Supprimer anciens tags/cover avant",
+                        variable=self.bp_clean_tags_var)
+        _chk_clean.pack(side='left', padx=8); bp_tip(_chk_clean, 'bp_clean_tags')
         tk.Label(meta_row, text="(cliquer 🎨 pour choisir les sources)",
                  fg='gray', font=("Arial", 8, "italic")).pack(side='left', padx=5)
 
@@ -3778,14 +3998,14 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
 
         torow = tk.Frame(sec3)
         torow.pack(fill='x', pady=1)
-        tk.Button(torow, text=T('bp_load_ref'), command=self._load_ref_tracks,
-                  bg='#e1e1e1').pack(side='left', padx=3)
-        tk.Button(torow, text=T('bp_load_first'), command=self._load_first_file_ref_tracks,
-                  bg='#90EE90').pack(side='left', padx=3)
-        tk.Button(torow, text=T('bp_track_up'), command=lambda: self._move_track(-1),
-                  bg='#FFC107').pack(side='left', padx=3)
-        tk.Button(torow, text=T('bp_track_down'), command=lambda: self._move_track(1),
-                  bg='#FFC107').pack(side='left', padx=3)
+        _b_ref = tk.Button(torow, text=T('bp_load_ref'), command=self._load_ref_tracks, bg='#e1e1e1')
+        _b_ref.pack(side='left', padx=3); bp_tip(_b_ref, 'bp_load_ref')
+        _b_first = tk.Button(torow, text=T('bp_load_first'), command=self._load_first_file_ref_tracks, bg='#90EE90')
+        _b_first.pack(side='left', padx=3); bp_tip(_b_first, 'bp_load_first')
+        _b_up = tk.Button(torow, text=T('bp_track_up'), command=lambda: self._move_track(-1), bg='#FFC107')
+        _b_up.pack(side='left', padx=3); bp_tip(_b_up, 'bp_track_up')
+        _b_down = tk.Button(torow, text=T('bp_track_down'), command=lambda: self._move_track(1), bg='#FFC107')
+        _b_down.pack(side='left', padx=3); bp_tip(_b_down, 'bp_track_down')
 
         tt_frame = tk.Frame(sec3)
         tt_frame.pack(fill='both', expand=True, pady=2)
@@ -3808,6 +4028,7 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.track_tree.column('forced', width=55, anchor='center')
         self.track_tree.column('default', width=60, anchor='center')
         self.track_tree.pack(side='left', fill='both', expand=True)
+        bp_tip(self.track_tree, 'track_tree')
         sb3 = ttk.Scrollbar(tt_frame, orient='vertical', command=self.track_tree.yview)
         sb3.pack(side='right', fill='y')
         self.track_tree.configure(yscrollcommand=sb3.set)
@@ -3828,8 +4049,10 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.bp_props_var = tk.BooleanVar(value=settings.get('bp_props', True))
         self.bp_reorder_var = tk.BooleanVar(value=settings.get('bp_reorder', False))
         self.bp_rename_var = tk.BooleanVar(value=settings.get('bp_rename', True))
-        ttk.Checkbutton(opts, text=T('bp_chk_sync'), variable=self.bp_sync_var).pack(side='left', padx=6)
-        ttk.Checkbutton(opts, text="+ sous-titres", variable=self.bp_sync_subs_var).pack(side='left', padx=0)
+        _chk_sync = ttk.Checkbutton(opts, text=T('bp_chk_sync'), variable=self.bp_sync_var)
+        _chk_sync.pack(side='left', padx=6); bp_tip(_chk_sync, 'bp_chk_sync')
+        _chk_sync_subs = ttk.Checkbutton(opts, text="+ sous-titres", variable=self.bp_sync_subs_var)
+        _chk_sync_subs.pack(side='left', padx=0); bp_tip(_chk_sync_subs, 'bp_chk_sync_subs')
         # Subtitle languages that receive the audio sync offset.
         # 'Toutes' (string) = all langs; otherwise a list of language codes.
         _saved_sl = settings.get('bp_sync_subs_langs', 'Toutes')
@@ -3837,14 +4060,19 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.bp_subs_lang_btn = tk.Button(opts, text="langues ▾", bg='#e1e1e1',
                                           font=("Arial", 8), command=self._open_subs_lang_dialog)
         self.bp_subs_lang_btn.pack(side='left', padx=(2, 0))
+        bp_tip(self.bp_subs_lang_btn, 'bp_subs_lang_btn')
         self._update_subs_lang_btn()
         ttk.Separator(opts, orient='vertical').pack(side='left', fill='y', padx=6)
-        ttk.Checkbutton(opts, text=T('bp_chk_props'), variable=self.bp_props_var).pack(side='left', padx=6)
-        ttk.Checkbutton(opts, text=T('bp_chk_reorder'), variable=self.bp_reorder_var).pack(side='left', padx=6)
-        ttk.Checkbutton(opts, text=T('bp_chk_rename'), variable=self.bp_rename_var).pack(side='left', padx=6)
+        _chk_props = ttk.Checkbutton(opts, text=T('bp_chk_props'), variable=self.bp_props_var)
+        _chk_props.pack(side='left', padx=6); bp_tip(_chk_props, 'bp_chk_props')
+        _chk_reorder = ttk.Checkbutton(opts, text=T('bp_chk_reorder'), variable=self.bp_reorder_var)
+        _chk_reorder.pack(side='left', padx=6); bp_tip(_chk_reorder, 'bp_chk_reorder')
+        _chk_rename = ttk.Checkbutton(opts, text=T('bp_chk_rename'), variable=self.bp_rename_var)
+        _chk_rename.pack(side='left', padx=6); bp_tip(_chk_rename, 'bp_chk_rename')
 
         self.bp_preserve_src_var = tk.BooleanVar(value=settings.get('bp_preserve_src', False))
-        ttk.Checkbutton(opts, text=T('bp_chk_preserve'), variable=self.bp_preserve_src_var).pack(side='left', padx=6)
+        _chk_preserve = ttk.Checkbutton(opts, text=T('bp_chk_preserve'), variable=self.bp_preserve_src_var)
+        _chk_preserve.pack(side='left', padx=6); bp_tip(_chk_preserve, 'bp_chk_preserve')
 
         srow2 = tk.Frame(sec4)
         srow2.pack(fill='x', pady=1)
@@ -3854,30 +4082,36 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         _ref_label = next((l for l in LANGUAGES if l.split()[0] == _saved_ref.split()[0]),
                           'jpn (Japanese)')
         self.bp_ref_lang_var = tk.StringVar(value=_ref_label)
-        ttk.Combobox(srow2, textvariable=self.bp_ref_lang_var, values=LANGUAGES,
-                     state='readonly', width=16).pack(side='left', padx=5)
+        _cb_ref_lang = ttk.Combobox(srow2, textvariable=self.bp_ref_lang_var, values=LANGUAGES,
+                     state='readonly', width=16)
+        _cb_ref_lang.pack(side='left', padx=5); bp_tip(_cb_ref_lang, 'bp_ref_lang')
         tk.Label(srow2, text=T('lbl_duration')).pack(side='left', padx=(10, 0))
         self.bp_duration_var = tk.StringVar(value=settings.get('bp_duration', settings.get('audio_sync_duration', "120")))
-        tk.Entry(srow2, textvariable=self.bp_duration_var, width=5).pack(side='left', padx=5)
+        _ent_dur = tk.Entry(srow2, textvariable=self.bp_duration_var, width=5)
+        _ent_dur.pack(side='left', padx=5); bp_tip(_ent_dur, 'bp_duration')
         tk.Label(srow2, text=T('lbl_batch_start')).pack(side='left', padx=(10, 0))
         self.bp_start_var = tk.StringVar(value=settings.get('bp_start', settings.get('audio_sync_start', "300")))
-        tk.Entry(srow2, textvariable=self.bp_start_var, width=5).pack(side='left', padx=5)
+        _ent_start = tk.Entry(srow2, textvariable=self.bp_start_var, width=5)
+        _ent_start.pack(side='left', padx=5); bp_tip(_ent_start, 'bp_start')
         # Manual subtitle offset (ms) — apply a fixed shift to the selected sub langs.
         # Use a negative value to UNDO a previous sync (e.g. -960). Forces a remux.
         tk.Label(srow2, text="Décalage subs (ms) :").pack(side='left', padx=(12, 0))
         self.bp_subs_offset_var = tk.StringVar(value=settings.get('bp_subs_offset', "0"))
-        tk.Entry(srow2, textvariable=self.bp_subs_offset_var, width=6).pack(side='left', padx=3)
+        _ent_offset = tk.Entry(srow2, textvariable=self.bp_subs_offset_var, width=6)
+        _ent_offset.pack(side='left', padx=3); bp_tip(_ent_offset, 'bp_subs_offset')
 
         out_row = tk.Frame(sec4)
         out_row.pack(fill='x', pady=1)
         self.bp_output_dir_var = tk.BooleanVar(value=settings.get('bp_output_dir', False))
-        ttk.Checkbutton(out_row, text="Dossier de sortie :",
-                        variable=self.bp_output_dir_var).pack(side='left')
+        _chk_outdir = ttk.Checkbutton(out_row, text="Dossier de sortie :",
+                        variable=self.bp_output_dir_var)
+        _chk_outdir.pack(side='left'); bp_tip(_chk_outdir, 'bp_output_dir_chk')
         self.bp_output_path_var = tk.StringVar(value=settings.get('bp_output_path', ''))
-        tk.Entry(out_row, textvariable=self.bp_output_path_var, width=30).pack(
-            side='left', padx=4, fill='x', expand=True)
-        tk.Button(out_row, text="📁", command=self._browse_output_dir,
-                  bg='#e1e1e1').pack(side='left', padx=2)
+        _ent_outpath = tk.Entry(out_row, textvariable=self.bp_output_path_var, width=30)
+        _ent_outpath.pack(side='left', padx=4, fill='x', expand=True)
+        bp_tip(_ent_outpath, 'bp_output_path')
+        _btn_browse = tk.Button(out_row, text="📁", command=self._browse_output_dir, bg='#e1e1e1')
+        _btn_browse.pack(side='left', padx=2); bp_tip(_btn_browse, 'bp_browse_out')
         tk.Label(out_row, text="(vide = sous-dossier auto)",
                  fg='gray', font=("Arial", 8, "italic")).pack(side='left', padx=4)
 
@@ -3887,10 +4121,12 @@ class BatchProTab(ttk.Frame, AudioSyncMixin):
         self.bp_run_btn = tk.Button(btn_row, text=T('bp_run'), command=self._run_pipeline,
                                     bg='#008000', fg='white', font=("Arial", 11, "bold"))
         self.bp_run_btn.pack(side='left', fill='x', expand=True)
+        bp_tip(self.bp_run_btn, 'bp_run_btn')
         self.bp_stop_btn = tk.Button(btn_row, text="⏹ Stop", command=self._stop_pipeline,
                                      bg='#cc0000', fg='white', font=("Arial", 11, "bold"),
                                      state='disabled', width=8)
         self.bp_stop_btn.pack(side='left', padx=(4, 0))
+        bp_tip(self.bp_stop_btn, 'bp_stop_btn')
 
         self.bp_progress = ttk.Progressbar(sec4, orient='horizontal', mode='determinate')
         self.bp_progress.pack(fill='x', pady=1)
